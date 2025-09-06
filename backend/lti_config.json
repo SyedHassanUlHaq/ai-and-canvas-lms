@@ -1,0 +1,68 @@
+{
+  "title": "AI Tutor",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+    "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+    "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
+  ],
+  "extensions": [
+    {
+      "platform": "canvas.instructure.com",
+      "settings": {
+        "platform": "canvas.instructure.com",
+        "placements": [
+          "course_navigation",
+          "assignment_selection",
+          "link_selection",
+          "module_menu",
+          "quiz_menu",
+          "discussion_topic_menu"
+        ],
+        "privacy_level": "public",
+        "text": "AI Tutor",
+        "icon_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/static/ai-tutor-icon.png",
+        "selection_width": 800,
+        "selection_height": 600,
+        "platform_storage": {
+          "enabled": true,
+          "target": "_parent"
+        }
+      }
+    }
+  ],
+  "custom_fields": {
+    "ai_tutor_enabled": "true",
+    "quiz_enabled": "true",
+    "conversation_enabled": "true",
+    "course_id": "$Canvas.course.id",
+    "user_id": "$Canvas.user.id",
+    "user_name": "$Canvas.user.name",
+    "user_email": "$Canvas.user.email",
+    "course_name": "$Canvas.course.name",
+    "course_code": "$Canvas.course.code",
+    "module_id": "$Canvas.module.id",
+    "module_item_id": "$Canvas.moduleItem.id"
+  },
+  "target_link_uri": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti/launch",
+  "oidc_initiation_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti/oidc",
+  "public_jwk": {
+    "kty": "RSA",
+    "kid": "bcc59ddf-8114-46d4-b0be-6bebcdb2654a",
+    "use": "sig",
+    "alg": "RS256",
+    "n": "iaUYcQmd5fQYkwxl3Hca_ekakvLkL5Qg0mkO2lpfop1sgN4EOiT4RuYKHtjUv4AE1E5UjSyGyXiD7c_x8V7_klkFjeMWCS6DFXm0Wvne4H98dXXtIiBSEw7OgiCfIaaHSWkVAwJhAfzQLcvD8Awc-WxVREXF0pnWQr_-G8YU7NRXHCtghrVV5RiZjhftVrV3flESB4WHqFCdZoRvBy2aSOnJsg8fC8yO1-jiqKVdE0uKZN8EAzeYJYBswo2NXC6Il3xB40F3crfwBVzVqSKVpegWS_INI4gkeVX2AxhngMEB9MApUnl5RMZxC-YvBROjA7_QqvURkZ2xlHZj_w6H5w",
+    "e": "AQAB"
+  },
+  "description": "AI-powered tutoring and assessment tool that provides personalized learning support, generates quizzes based on course content, and offers adaptive difficulty levels.",
+  "vendor": {
+    "code": "ai-tutor",
+    "name": "AI Tutor",
+    "description": "Advanced AI-powered learning platform",
+    "website": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app",
+    "contact": {
+      "email": "support@ai-tutor.com"
+    }
+  },
+  "tool_id": "ai-tutor-v1",
+  "version": "1.0.0"
+} 

@@ -1,0 +1,44 @@
+{
+  "title": "AI Tutor Assistant",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+    "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
+  ],
+  "extensions": [
+    {
+      "domain": "ai-tutor-73183888096.asia-southeast2.run.app",
+      "tool_id": "ai_tutor_assistant",
+      "platform": "canvas.instructure.com",
+      "privacy_level": "public",
+      "settings": {
+        "text": "AI Tutor",
+        "placements": [
+          {
+            "text": "AI Tutor",
+            "placement": "editor_button",
+            "message_type": "LtiDeepLinkingRequest",
+            "target_link_uri": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti/launch_rce",
+            "icon_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/static/ai-tutor-icon.svg",
+            "selection_width": 800,
+            "selection_height": 600
+          }
+        ]
+      }
+    }
+  ],
+  "public_jwk": {
+    "kty": "RSA",
+    "kid": "595e5313f5423dfb",
+    "use": "sig",
+    "alg": "RS256",
+    "n": "jM8MD4kZn5IrJzNZY9_z5UJJb3RxohRb2j6ihD5L2LrdNmBIBkiadq0Ce9kzFolG47FbFmAb_lguqdVWJa1PGKb045f59m7RF-qat9CnOzZwdWZHp5t2kX3Xfo0lPA2hCRE-CfKYynvtZVAQgapTT9BvtVTxrvHzogdI-daTovexrjmFdJ_YAaTJTSf7-y3oGC2HHVH9hP722Z49H8NJdYBDZwYgYrWn3hYrPVKmf76akbmaL4_AphzhL_26WpmK0RBGKHtUYyWx35j7rTU-6thnhU4YDut5GAPVhJ_X1jjfjjfLVvfOovBX5AIxvPZ_MzfU--45jyvwdLfB3D3zuQ",
+    "e": "AQAB"
+  },
+  "description": "AI-powered tutoring assistant that provides contextual help",
+  "custom_fields": {},
+  "target_link_uri": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti/launch_rce",
+  "oidc_initiation_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti/login",
+  "canvas_oidc_auth_endpoint": "https://sso.canvaslms.com/api/lti/authorize_redirect",
+  "canvas_jwks_endpoint": "https://sso.canvaslms.com/api/lti/security/jwks",
+  "canvas_token_endpoint": "https://sso.canvaslms.com/login/oauth2/token"
+} 

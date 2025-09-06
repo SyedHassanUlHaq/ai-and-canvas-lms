@@ -1,0 +1,912 @@
+<style>
+    .chat-widget {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+  
+    /* Widget box - Always visible */
+    .widget-container {
+      display: flex;
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 350px;
+      max-height: 500px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+      flex-direction: column;
+      z-index: 99999;
+    }
+  
+    .header {
+      background: linear-gradient(135deg, #008ee2 0%, #00b4db 100%);
+      color: white;
+      padding: 15px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 1.2em;
+      margin: 0;
+      font-weight: 400;
+    }
+    .header p {
+      font-size: 0.8em;
+      opacity: 0.9;
+      margin: 4px 0 0 0;
+    }
+  
+    .context-info {
+      font-size: 0.75em;
+      margin-top: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 5px;
+    }
+  
+    .status-indicator {
+      font-size: 0.7em;
+      margin-top: 5px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      padding: 3px 6px;
+      opacity: 0.9;
+    }
+
+    .status-indicator.info {
+      background: rgba(0, 123, 255, 0.2);
+    }
+
+    .status-indicator.success {
+      background: rgba(40, 167, 69, 0.2);
+    }
+
+    .status-indicator.warning {
+      background: rgba(255, 193, 7, 0.2);
+    }
+
+    .status-indicator.error {
+      background: rgba(220, 53, 69, 0.2);
+    }
+  
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 350px;
+      z-index: 99999;
+    }
+  
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      background: #f8f9fa;
+    }
+  
+    .message {
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      border-radius: 16px;
+      max-width: 75%;
+      word-wrap: break-word;
+      font-size: 0.9em;
+    }
+    .message.user {
+      background: #008ee2;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+    .message.ai {
+      background: #e9ecef;
+      color: #333;
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
+    }
+  
+    .chat-input {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 10px;
+      background: white;
+      border-top: 1px solid #e9ecef;
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #e9ecef;
+      border-radius: 20px;
+      font-size: 14px;
+      outline: none;
+    }
+    .chat-input input:focus {
+      border-color: #008ee2;
+    }
+    .chat-input button {
+      background: #008ee2;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .chat-input button:hover {
+      background: #007acc;
+    }
+  </style>
+  
+      <div class="chat-widget">
+      <!-- Chat Box - Always Visible -->
+      <div class="widget-container active" id="chat-widget">
+      <div class="header">
+        <h1>🎓 AI Tutor</h1>
+        <p>Your Learning Assistant</p>
+        <!-- <div class="context-info" id="context-info">
+          🔍 Detecting course context...
+        </div> -->
+        <div class="status-indicator" id="status-indicator">
+          🔍 Initializing...
+        </div>
+      </div>
+  
+      <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+          <div class="message ai" id="welcome-message">
+            Hello! I'm your AI Tutor. I'll help you with questions about your course content!
+          </div>
+        </div>
+        <div class="chat-input">
+          <input type="text" id="chat-input" placeholder="Ask me about your course..." maxlength="500">
+          <button id="send-button" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>  
+
+    <script>
+        let sessionId = null;
+        let chatHistory = [];
+        let courseContext = null;
+        let isInitialized = false;
+        let currentQuizState = null;
+        let currentLanguage = 'en'; // Default language
+        let moduleNavigation = null; // Store module navigation context
+
+        function generateSessionId() {
+            const base = Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
+            return base.substring(0, 15); // always 15 chars
+        }
+
+        window.addEventListener('load', initializeWidget);
+
+        // Initialize the widget
+        function initializeWidget() {
+            try {
+                sessionId = generateSessionId();
+                // Detect course context
+                detectCourseContext();
+                
+                // Setup chat input
+                setupChatInput();
+                
+                isInitialized = true;
+                
+            } catch (error) {
+                console.error('❌ Error initializing widget:', error);
+                updateStatus('❌ Initialization failed');
+            }
+        }
+
+        async function detectCourseContext() {
+            try {
+                console.log('🔍 Detecting course context...');
+                console.log('📍 Current URL:', window.location.href);
+                console.log('�� Current URL search params:', window.location.search);
+                console.log('📍 Document referrer:', document.referrer);
+                updateStatus('🔍 Detecting course context...');
+                
+                // Try to get context from URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const courseId = urlParams.get('course_id');
+                const pageSlug = urlParams.get('page_slug');
+                const moduleItemId = urlParams.get('module_item_id');
+                
+                console.log('🔍 URL Parameters found:');
+                console.log('  - course_id:', courseId);
+                console.log('  - page_slug:', pageSlug);
+                console.log('  - module_item_id:', moduleItemId);
+                
+                if (courseId) {
+                    console.log(`✅ Course ID detected: ${courseId}`);
+                    courseContext = {
+                        courseId: courseId,
+                        pageSlug: pageSlug || null,
+                        moduleItemId: moduleItemId || null,
+                        courseName: `Course ${courseId}`,
+                        pageTitle: pageSlug ? pageSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : null,
+                        contextType: pageSlug ? 'page' : 'course'
+                    };
+                    
+                    console.log('📋 Course Context Object:', courseContext);
+                    updateContextInfo();
+                    updateStatus('✅ Course context detected');
+                    
+                    // Load appropriate context based on type
+                    if (pageSlug) {
+                        fetchCoursePageInfo(courseId, pageSlug);
+                    }
+                    
+                    // If we already have a module item ID, fetch database content immediately
+                    if (moduleItemId) {
+                        console.log(`✅ Module item ID already available: ${moduleItemId}, fetching database content...`);
+                        await fetchModuleItemContent(moduleItemId);
+                    }
+                } else {
+                    console.log('⚠️ No course_id in URL parameters, trying referrer...');
+                    // Try to detect from referrer or parent frame
+                    await detectFromReferrer();
+                }
+                
+                // Try to detect module item ID from page content
+                await detectModuleItemId();
+                
+            } catch (error) {
+                console.error('❌ Error detecting course context:', error);
+                updateStatus('⚠️ Context detection failed');
+            }
+        }
+
+        async function detectFromReferrer() {
+            try {
+                const referrer = document.referrer;
+                console.log('🔍 Checking referrer:', referrer);
+                console.log('🔍 Referrer URL:', referrer);
+                
+                if (referrer) {
+                    // Try to extract course info from Canvas URL
+                    const courseMatch = referrer.match(/courses\/(\d+)/);
+                    const pageMatch = referrer.match(/pages\/([^\/\?]+)/);
+                    const moduleItemMatch = referrer.match(/modules\/items\/(\d+)/);
+                    
+                    console.log('�� Regex matches:');
+                    console.log('  - courseMatch:', courseMatch);
+                    console.log('  - pageMatch:', pageMatch);
+                    console.log('  - moduleItemMatch:', moduleItemMatch);
+                    
+                    if (courseMatch) {
+                        const courseId = courseMatch[1];
+                        console.log(`✅ Course ID extracted from referrer: ${courseId}`);
+                        
+                        if (!courseContext) {
+                        courseContext = {
+                            courseId: courseId,
+                                pageSlug: pageMatch ? pageMatch[1] : null,
+                                moduleItemId: moduleItemMatch ? moduleItemMatch[1] : null,
+                            courseName: `Course ${courseId}`,
+                                pageTitle: pageMatch ? pageMatch[1].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : null,
+                                contextType: pageMatch ? 'page' : 'course'
+                        };
+                        } else {
+                            courseContext.courseId = courseId;
+                            if (pageMatch) courseContext.pageSlug = pageMatch[1];
+                            if (moduleItemMatch) courseContext.moduleItemId = moduleItemMatch[1];
+                        }
+                        
+                        console.log('📋 Updated course context from referrer:', courseContext);
+                        updateContextInfo();
+                        updateStatus('✅ Course context detected from referrer');
+                        
+                        // If we have a module item ID from referrer, fetch database content
+                        if (moduleItemMatch) {
+                            const moduleItemId = moduleItemMatch[1];
+                            console.log(`✅ Module item ID from referrer: ${moduleItemId}, fetching database content...`);
+                            await fetchModuleItemContent(moduleItemId);
+                        }
+                    } else {
+                        console.log('⚠️ No course ID found in referrer URL');
+                    }
+                } else {
+                    console.log('⚠️ No referrer available');
+                }
+            } catch (error) {
+                console.error('❌ Error detecting from referrer:', error);
+            }
+        }
+
+        async function fetchCoursePageInfo(courseId, pageSlug) {
+            try {
+                console.log(`�� Fetching page info for course ${courseId}, page ${pageSlug}...`);
+                updateStatus('📚 Fetching course content...');
+                
+                const response = await fetch(`/api/v1/canvas/course/${courseId}/page/${pageSlug}`);
+                const data = await response.json();
+                
+                if (data.status === 'success' && data.page_content) {
+                    const pageData = data.page_content;
+                    courseContext.pageTitle = pageData.title || pageSlug;
+                    courseContext.courseName = `Course ${courseId}`;
+                    
+                    console.log('✅ Page info retrieved:', courseContext);
+                    updateContextInfo();
+                    updateStatus('✅ Ready to help with course content');
+                    
+                } else {
+                    console.warn('⚠️ Could not retrieve page info');
+                    updateStatus('⚠️ Limited course context');
+                }
+                
+            } catch (error) {
+                console.error('❌ Error fetching page info:', error);
+                updateStatus('⚠️ Limited course context');
+            }
+        }
+
+        async function fetchModuleItemContent(moduleItemId) {
+            try {
+                console.log(`📚 Fetching database content for module item: ${moduleItemId}`);
+                updateStatus('📚 Fetching course content from database...');
+                
+                // Call backend API to query the database
+                const response = await fetch(`/api/v1/content/module-item/${moduleItemId}`);
+                
+                if (!response.ok) {
+                    console.warn(`⚠️ Database API request failed: ${response.status} ${response.statusText}`);
+                    return null;
+                }
+                
+                const data = await response.json();
+                console.log('📥 Database content response:', data);
+                
+                if (data.status === 'success' && data.content) {
+                    const content = data.content;
+                    
+                    // Store the retrieved content in course context
+                    courseContext.databaseContent = {
+                        moduleName: content.module_name,
+                        modulePosition: content.module_position,
+                        itemTitle: content.item_title,
+                        itemType: content.item_type,
+                        itemPosition: content.item_position,
+                        pageContent: content.page_content,
+                        pageTitle: content.page_title,
+                        moduleId: content.module_id
+                    };
+                    
+                    console.log('✅ Database content retrieved and stored:', courseContext.databaseContent);
+                    
+                    // Log the queried page body content
+                    if (content.page_content) {
+                        console.log('�� Page Body Content:');
+                        console.log('='.repeat(80));
+                        console.log(content.page_content);
+                        console.log('='.repeat(80));
+                        console.log(`�� Content Length: ${content.page_content.length} characters`);
+                        console.log(`📊 Content Preview: ${content.page_content}`);
+                    } else {
+                        console.log('⚠️ No page content available for this module item');
+                    }
+                    
+                    updateContextInfo(); // Update the widget display
+                    updateStatus('✅ Ready with full course context');
+                    
+                    return content;
+                } else {
+                    console.warn('⚠️ Could not retrieve database content');
+                    updateStatus('⚠️ Limited course context');
+                    return null;
+                }
+                
+            } catch (error) {
+                console.error('❌ Error fetching module item content:', error);
+                updateStatus('⚠️ Limited course context');
+                return null;
+            }
+        }
+
+        function updateContextInfo() {
+            const contextInfo = document.getElementById('context-info');
+            if (!contextInfo) {
+                console.warn('⚠️ context-info element not found, skipping update');
+                return;
+            }
+            
+            if (courseContext) {
+                let contextText = `📚 ${courseContext.courseName}`;
+                
+                // Add database content context if available
+                if (courseContext.databaseContent) {
+                    const db = courseContext.databaseContent;
+                    contextText += ` | �� ${db.moduleName} (${db.modulePosition})`;
+                    contextText += ` | 📄 ${db.itemTitle} (${db.itemPosition})`;
+                } else if (courseContext.pageTitle) {
+                    contextText += ` | 📄 ${courseContext.pageTitle}`;
+                }
+                
+                if (courseContext.moduleItemId) {
+                    contextText += ` | 🔗 ID: ${courseContext.moduleItemId}`;
+                }
+                
+                // Add module context if available (fallback)
+                if (moduleNavigation && !courseContext.databaseContent) {
+                    if (moduleNavigation.module) {
+                        contextText += ` | �� ${moduleNavigation.module.name}`;
+                    }
+                }
+                
+                contextInfo.textContent = contextText;
+            } else {
+                contextInfo.textContent = '⚠️ No course context detected';
+            }
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusIndicator = document.getElementById('status-indicator');
+            if (!statusIndicator) {
+                console.warn('⚠️ status-indicator element not found, skipping status update');
+                return;
+            }
+            
+                statusIndicator.textContent = message;
+                statusIndicator.className = `status-indicator ${type}`;
+        }
+
+        function setupChatInput() {
+            const input = document.getElementById('chat-input');
+            const button = document.getElementById('send-button');
+            
+            // Enter key to send
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Input validation
+            input.addEventListener('input', function() {
+                button.disabled = !input.value.trim();
+            });
+
+            // Setup refresh context button
+            const refreshBtn = document.getElementById('refresh-context-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    console.log('🔄 Manual refresh button clicked');
+                    refreshAllContext();
+                });
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            addMessage('user', message);
+            
+            // Clear input
+            input.value = '';
+            document.getElementById('send-button').disabled = true;
+            
+            // Show typing indicator
+            const typingId = addMessage('ai', '...', 'typing');
+            
+            try {
+                // Send to AI chat API
+                const aiResponse = await getAIResponse(message);
+                removeMessage(typingId);
+                addMessage('ai', aiResponse);
+                
+            } catch (error) {
+                console.error('❌ Error getting AI response:', error);
+                removeMessage(typingId);
+                addMessage('ai', 'Sorry, I\'m having trouble processing your question right now. Please try again.');
+            }
+            
+            // Re-enable input
+            document.getElementById('send-button').disabled = false;
+        }
+
+        async function getAIResponse(userQuestion) {
+            try {
+                console.log('🤖 Getting AI response for:', userQuestion);
+                
+                const requestData = {
+                    message: userQuestion,
+                    course_id: courseContext?.courseId || null,
+                    page_slug: courseContext?.pageSlug || null,
+                    module_item_id: courseContext?.moduleItemId || null,
+                    language: currentLanguage,
+                    session_id: sessionId,
+                    
+                    // Enhanced module context with database content
+                    module_context: courseContext.databaseContent ? {
+                        module_id: courseContext.databaseContent.moduleId,
+                        module_name: courseContext.databaseContent.moduleName,
+                        module_position: courseContext.databaseContent.modulePosition,
+                        current_position: courseContext.databaseContent.itemPosition,
+                        item_title: courseContext.databaseContent.itemTitle,
+                        item_type: courseContext.databaseContent.itemType
+                    } : (moduleNavigation ? {
+                        module_id: moduleNavigation.module?.id || null,
+                        module_name: moduleNavigation.module?.name || null,
+                        current_position: moduleNavigation.current?.position || null
+                    } : null),
+                    
+                    // Include the actual page content for context
+                    page_content: courseContext.databaseContent?.pageContent || null,
+                    page_title: courseContext.databaseContent?.pageTitle || null
+                };
+                
+                console.log('📤 Request data:', requestData);
+                
+                const response = await fetch('/api/v1/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('📥 AI response data:', data);
+                
+                // Handle quiz responses
+                if (data.insights && data.insights.response_type === 'quiz_question') {
+                    // Store quiz state for tracking
+                    currentQuizState = {
+                        id: data.insights.quiz_id,
+                        difficulty: data.insights.difficulty,
+                        current_question: data.insights.question_index,
+                        status: 'active'
+                    };
+                } else if (data.insights && data.insights.response_type === 'quiz_complete') {
+                    // Clear quiz state when completed
+                    currentQuizState = null;
+                }
+                
+                return data.reply;
+                
+            } catch (error) {
+                console.error('❌ Error in getAIResponse:', error);
+                throw error;
+            }
+        }
+
+        function addMessage(sender, text, type = 'normal') {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            
+            messageDiv.id = messageId;
+            messageDiv.className = `message ${sender} ${type}`;
+            // Handle quiz messages with special formatting
+            if (sender === 'ai' && text.includes('🎯')) {
+                // Quiz question - format with HTML
+                messageDiv.innerHTML = text.replace(/\n/g, '<br>');
+            } else if (sender === 'ai' && text.includes('🎉')) {
+                // Quiz results - format with HTML
+                messageDiv.innerHTML = text.replace(/\n/g, '<br>');
+            } else if (sender === 'ai') {
+                // AI messages - format with markdown-like HTML
+                let formattedText = text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold**
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')                // *italic*
+                    .replace(/\n/g, '<br>')                               // line breaks
+                    .replace(/\* /g, '• ')                                // bullet points
+                    .replace(/^\* /gm, '• ');                             // bullet points at start of line
+                messageDiv.innerHTML = formattedText;
+            } else {
+                // Regular user message
+                messageDiv.textContent = text;
+            }
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Store in chat history
+            chatHistory.push({ id: messageId, sender, text, timestamp: new Date() });
+            
+            return messageId;
+        }
+
+        function removeMessage(messageId) {
+            const message = document.getElementById(messageId);
+            if (message) {
+                message.remove();
+            }
+        }
+
+        function switchLanguage(language) {
+            try {
+                currentLanguage = language;
+                
+                // Update button states
+                document.getElementById('lang-en').classList.remove('active');
+                document.getElementById('lang-id').classList.remove('active');
+                document.getElementById(`lang-${language}`).classList.add('active');
+                
+                // Update welcome message
+                const welcomeMessage = document.getElementById('welcome-message');
+                if (welcomeMessage) {
+                    if (language === 'id') {
+                        welcomeMessage.textContent = '👋 Halo! Saya adalah AI Tutor Anda. Saya akan membantu Anda dengan pertanyaan tentang konten kursus!';
+                    } else {
+                        welcomeMessage.textContent = '👋 Hello! I\'m your AI Tutor. I\'ll help you with questions about your course content!';
+                    }
+                }
+                
+                // Update input placeholder
+                const chatInput = document.getElementById('chat-input');
+                if (chatInput) {
+                    if (language === 'id') {
+                        chatInput.placeholder = 'Tanyakan saya tentang kursus Anda...';
+                    } else {
+                        chatInput.placeholder = 'Ask me about your course...';
+                    }
+                }
+                
+                // Update send button text
+                const sendButton = document.getElementById('send-button');
+                if (sendButton) {
+                    if (language === 'id') {
+                        sendButton.textContent = 'Kirim';
+                    } else {
+                        sendButton.textContent = 'Send';
+                    }
+                }
+                
+                console.log(`✅ Language switched to: ${language}`);
+                
+            } catch (error) {
+                console.error('❌ Error switching language:', error);
+            }
+        }
+
+        async function detectModuleItemId() {
+            try {
+                console.log('🔍 Detecting module item ID...');
+                
+                // If we already have a module item ID, skip detection
+                if (courseContext?.moduleItemId) {
+                    console.log(`✅ Module item ID already detected: ${courseContext.moduleItemId}`);
+                    return;
+                }
+                
+                // Method 1: Try to get from Canvas Module Item Sequence API
+                if (courseContext?.courseId && courseContext?.pageSlug) {
+                    console.log('🔍 Attempting to fetch module item ID from Canvas API...');
+                    const moduleItemId = await fetchModuleItemIdFromCanvas(courseContext.courseId, courseContext.pageSlug);
+                    if (moduleItemId) {
+                        console.log(`✅ Module item ID fetched from Canvas API: ${moduleItemId}`);
+                        courseContext.moduleItemId = moduleItemId;
+                        console.log('📋 Updated course context with module item ID:', courseContext);
+                        
+                        // Now fetch the database content for this module item
+                        await fetchModuleItemContent(moduleItemId);
+                        return;
+                    }
+                }
+                
+                // Method 2: Look for data attributes in Canvas elements (fallback)
+                console.log('🔍 Falling back to page content analysis...');
+                const canvasElements = document.querySelectorAll('[data-module-item-id], [data-item-id], [data-id]');
+                console.log('🔍 Canvas elements with data attributes:', canvasElements);
+                
+                for (const element of canvasElements) {
+                    const moduleItemId = element.getAttribute('data-module-item-id') || 
+                                       element.getAttribute('data-item-id') || 
+                                       element.getAttribute('data-id');
+                    if (moduleItemId && moduleItemId.match(/^\d+$/)) {
+                        console.log(`✅ Module item ID found in data attribute: ${moduleItemId}`);
+                        if (courseContext) {
+                            courseContext.moduleItemId = moduleItemId;
+                            console.log('📋 Updated course context with module item ID:', courseContext);
+                            
+                            // Fetch database content for this module item
+                            await fetchModuleItemContent(moduleItemId);
+                        }
+                        return;
+                    }
+                }
+                
+                // Method 3: Look for module item ID in page URL patterns (fallback)
+                const currentUrl = window.location.href;
+                const moduleItemMatch = currentUrl.match(/modules\/items\/(\d+)/);
+                if (moduleItemMatch) {
+                    const moduleItemId = moduleItemMatch[1];
+                    console.log(`✅ Module item ID found in URL: ${moduleItemId}`);
+                    if (courseContext) {
+                        courseContext.moduleItemId = moduleItemId;
+                        console.log('📋 Updated course context with module item ID:', courseContext);
+                        
+                        // Fetch database content for this module item
+                        await fetchModuleItemContent(moduleItemId);
+                    }
+                    return;
+                }
+                
+                // Method 4: Extract module item ID from referrer URL query parameters
+                if (document.referrer) {
+                    const referrerUrl = new URL(document.referrer);
+                    const referrerModuleItemId = referrerUrl.searchParams.get('module_item_id');
+                    if (referrerModuleItemId) {
+                        console.log(`✅ Module item ID found in referrer query params: ${referrerModuleItemId}`);
+                        if (courseContext) {
+                            courseContext.moduleItemId = referrerModuleItemId;
+                            console.log('📋 Updated course context with module item ID:', courseContext);
+                            
+                            // Fetch database content for this module item
+                            await fetchModuleItemContent(referrerModuleItemId);
+                        }
+                        return;
+                    }
+                }
+                
+                console.log('⚠️ No module item ID detected from any method');
+                
+            } catch (error) {
+                console.error('❌ Error detecting module item ID:', error);
+            }
+        }
+
+        async function fetchModuleItemIdFromCanvas(courseId, pageSlug) {
+            try {
+                console.log(`🔍 Fetching module item ID for course ${courseId}, page ${pageSlug}...`);
+                
+                // Use our backend API to proxy the Canvas API call
+                const response = await fetch(`/api/v1/canvas/course/${courseId}/module-item-sequence?asset_type=Page&asset_id=${pageSlug}`);
+                
+                if (!response.ok) {
+                    console.warn(`⚠️ Canvas API request failed: ${response.status} ${response.statusText}`);
+                    return null;
+                }
+                
+                const data = await response.json();
+                console.log('📥 Canvas API response:', data);
+                console.log('�� Response structure analysis:');
+                console.log('  - Has items array:', !!data.items);
+                console.log('  - Items array length:', data.items ? data.items.length : 0);
+                console.log('  - Has modules array:', !!data.modules);
+                console.log('  - Modules array length:', data.modules ? data.modules.length : 0);
+                
+                // Extract module item ID from the response
+                if (data && data.items && data.items.length > 0) {
+                    // Log the full structure of the first item for debugging
+                    const moduleItem = data.items[0];
+                    console.log('🔍 Full module item structure:', moduleItem);
+                    
+                    // Check if the item has a 'current' property (Canvas API structure)
+                    if (moduleItem.current && moduleItem.current.id) {
+                        console.log(`✅ Module item ID found in current.id: ${moduleItem.current.id}`);
+                        
+                        // Store just the current module item and module info
+                        moduleNavigation = {
+                            current: moduleItem.current,
+                            module: data.modules && data.modules.length > 0 ? data.modules[0] : null
+                        };
+                        
+                        console.log('📋 Module context captured:', moduleNavigation);
+                        
+                        return moduleItem.current.id.toString();
+                    }
+                    
+                    // Try direct field names for module item ID
+                    const moduleItemId = moduleItem.id || 
+                                       moduleItem.module_item_id || 
+                                       moduleItem.item_id ||
+                                       moduleItem.canvas_item_id;
+                    
+                    if (moduleItemId) {
+                        console.log(`✅ Module item ID extracted directly: ${moduleItemId}`);
+                        return moduleItemId.toString();
+                    } else {
+                        console.log('⚠️ Module item found but no ID field detected');
+                        console.log('🔍 Available fields:', Object.keys(moduleItem));
+                        
+                        // Check if there are nested objects that might contain the ID
+                        if (moduleItem.current) {
+                            console.log('🔍 Checking nested current object:', moduleItem.current);
+                            console.log('🔍 Current object fields:', Object.keys(moduleItem.current));
+                        }
+                    }
+                }
+                
+                // If items array doesn't have the ID, check if it's in the modules array
+                if (data && data.modules && data.modules.length > 0) {
+                    console.log('🔍 Checking modules array for module item ID...');
+                    const module = data.modules[0];
+                    console.log('🔍 Full module structure:', module);
+                    
+                    // Some Canvas APIs return the module item ID in the module object
+                    const moduleItemId = module.id || 
+                                       module.module_item_id || 
+                                       module.item_id;
+                    
+                    if (moduleItemId) {
+                        console.log(`✅ Module item ID found in module: ${moduleItemId}`);
+                        return moduleItemId.toString();
+                    }
+                }
+                
+                console.log('⚠️ No module item ID found in Canvas API response');
+                return null;
+                
+            } catch (error) {
+                console.error('❌ Error fetching module item ID from Canvas:', error);
+                return null;
+            }
+        }
+
+        function getModuleContext() {
+            // Get formatted module context for AI responses
+            if (!moduleNavigation) return null;
+            
+            let context = `You are currently in: ${moduleNavigation.current?.title || 'Unknown'}`;
+            
+            if (moduleNavigation.module) {
+                context += `\nModule: ${moduleNavigation.module.name}`;
+            }
+            
+            return context;
+        }
+
+        async function refreshDatabaseContent() {
+            if (courseContext?.moduleItemId) {
+                console.log('🔄 Refreshing database content...');
+                updateStatus('🔄 Refreshing course content...');
+                await fetchModuleItemContent(courseContext.moduleItemId);
+            } else {
+                console.log('⚠️ No module item ID available for refresh');
+                updateStatus('⚠️ No module item ID available');
+            }
+        }
+
+        async function refreshAllContext() {
+            console.log('🔄 Refreshing all context...');
+            updateStatus('🔄 Refreshing all context...');
+            
+            // Refresh database content if available
+            await refreshDatabaseContent();
+            
+            console.log('✅ All context refreshed successfully');
+            updateStatus('✅ All context refreshed');
+        }
+
+        function hasDatabaseContent() {
+            return !!(courseContext?.databaseContent);
+        }
+
+        function getDatabaseContentSummary() {
+            if (!courseContext?.databaseContent) return null;
+            
+            const db = courseContext.databaseContent;
+            return {
+                module: `${db.moduleName} (${db.modulePosition})`,
+                item: `${db.itemTitle} (${db.itemPosition})`,
+                type: db.itemType,
+                hasContent: !!db.pageContent
+            };
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeWidget);
+        
+        // Fallback initialization
+        if (document.readyState === 'loading') {
+            console.log('⏳ DOM still loading...');
+        } else {
+            console.log('✅ DOM already ready, initializing...');
+            initializeWidget();
+        }
+    </script>

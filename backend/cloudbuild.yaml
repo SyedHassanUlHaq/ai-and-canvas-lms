@@ -1,0 +1,45 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'asia-southeast2-docker.pkg.dev/elivision-ai-1/canvas-backend/ai-tutor:$COMMIT_SHA', '.']
+  
+  # Push the container image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-southeast2-docker.pkg.dev/elivision-ai-1/canvas-backend/ai-tutor:$COMMIT_SHA']
+  
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'ai-tutor'
+      - '--image'
+      - 'asia-southeast2-docker.pkg.dev/elivision-ai-1/canvas-backend/ai-tutor:$COMMIT_SHA'
+      - '--region'
+      - 'asia-southeast2'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8000'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'ENVIRONMENT=production'
+      - '--set-env-vars'
+      - 'CANVAS_URL=https://taclegacy.instructure.com'
+      - '--set-env-vars'
+      - 'DEFAULT_LANGUAGE=id'
+      - '--set-env-vars'
+      - 'AUTO_DETECT_LANGUAGE=true'
+
+images:
+  - 'asia-southeast2-docker.pkg.dev/elivision-ai-1/canvas-backend/ai-tutor:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY 

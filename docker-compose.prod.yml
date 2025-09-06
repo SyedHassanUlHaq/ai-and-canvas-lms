@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/elivision-ai-1-4e63af45bd31.json
+      - GEMINI_MODEL=gemini-1.5-pro
+      - CHROMA_PERSIST_DIRECTORY=/app/data/vector_db
+      - MAX_CONTEXT_LENGTH=8000
+      - SIMILARITY_THRESHOLD=0.6
+      - MAX_RETRIEVED_DOCS=10
+      - API_KEY_HEADER=X-API-Key
+      - ALLOWED_ORIGINS=["https://yourdomain.com"]
+    volumes:
+      - ./elivision-ai-1-4e63af45bd31.json:/app/credentials/elivision-ai-1-4e63af45bd31.json:ro
+      - vector_data:/app/data/vector_db
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  # Production Redis for conversation persistence
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  vector_data:
+    driver: local
+  redis_data:
+    driver: local 

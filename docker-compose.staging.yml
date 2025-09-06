@@ -1,0 +1,13 @@
+version: '3.9'
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ai_tutor_backend_staging
+    environment:
+      - AI_TUTOR_ENVIRONMENT=staging
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend:/app 

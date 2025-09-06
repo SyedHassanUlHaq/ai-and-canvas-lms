@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Tutor - LTI Course</title>
+    <style>
+        .chat-widget {
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          z-index: 9999;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+      
+        /* Floating button */
+        .chat-toggle {
+          background: #008ee2;
+          color: white;
+          border: none;
+          border-radius: 50%;
+          width: 60px;
+          height: 60px;
+          cursor: pointer;
+          font-size: 26px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          transition: transform 0.2s ease;
+        }
+        .chat-toggle:hover {
+          transform: scale(1.05);
+          background: #007acc;
+        }
+      
+        /* Widget box */
+        .widget-container {
+          display: none;
+          position: absolute;
+          bottom: 80px;
+          right: 0;
+          width: 350px;
+          max-height: 500px;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+          overflow: hidden;
+          flex-direction: column;
+          z-index: 99999;
+        }
+      
+        .widget-container.active {
+          display: flex;
+          z-index: 99999;
+        }
+      
+        .header {
+          background: linear-gradient(135deg, #008ee2 0%, #00b4db 100%);
+          color: white;
+          padding: 15px;
+          text-align: center;
+          position: relative;
+        }
+        .header h1 {
+          font-size: 1.2em;
+          margin: 0;
+          font-weight: 400;
+        }
+        .header p {
+          font-size: 0.8em;
+          opacity: 0.9;
+          margin: 4px 0 0 0;
+        }
+      
+        .context-info {
+          font-size: 0.75em;
+          margin-top: 8px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          padding: 5px;
+        }
+      
+        .chat-container {
+          display: flex;
+          flex-direction: column;
+          height: 350px;
+          z-index: 99999;
+          position: relative;
+        }
+      
+        .chat-messages {
+          flex: 1;
+          overflow-y: auto;
+          padding: 12px;
+          background: #f8f9fa;
+        }
+      
+        .message {
+          margin-bottom: 12px;
+          padding: 10px 14px;
+          border-radius: 16px;
+          max-width: 75%;
+          word-wrap: break-word;
+          font-size: 0.9em;
+        }
+        .message.user {
+          background: #008ee2;
+          color: white;
+          margin-left: auto;
+          border-bottom-right-radius: 4px;
+        }
+        .message.ai {
+          background: #e9ecef;
+          color: #333;
+          margin-right: auto;
+          border-bottom-left-radius: 4px;
+        }
+      
+        .chat-input {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          padding: 10px;
+          background: white;
+          border-top: 1px solid #e9ecef;
+        }
+        .chat-input input {
+          flex: 1;
+          padding: 10px;
+          border: 1px solid #e9ecef;
+          border-radius: 20px;
+          font-size: 14px;
+          outline: none;
+        }
+        .chat-input input:focus {
+          border-color: #008ee2;
+        }
+        .chat-input button {
+          background: #008ee2;
+          color: white;
+          border: none;
+          padding: 10px 16px;
+          border-radius: 20px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .chat-input button:hover {
+          background: #007acc;
+        }
+        
+        /* Refresh button */
+        .refresh-button {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(255, 255, 255, 0.2);
+          border: none;
+          border-radius: 50%;
+          width: 30px;
+          height: 30px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 14px;
+          transition: all 0.3s ease;
+          z-index: 100000;
+        }
+        .refresh-button:hover {
+          background: rgba(255, 255, 255, 0.3);
+          transform: rotate(30deg);
+        }
+        .refresh-button:active {
+          transform: rotate(360deg);
+          transition: transform 0.5s ease;
+        }
+        
+        /* Loading spinner for refresh */
+        .refresh-spinner {
+          display: none;
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-radius: 50%;
+          border-top-color: white;
+          animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-widget">
+        <!-- Floating Button -->
+        <button class="chat-toggle" onclick="toggleChat()">💬</button>
+      
+        <!-- Hidden Chat Box -->
+        <div class="widget-container" id="chat-widget">
+            <div class="header">
+                <h1>🎓 AI Tutor</h1>
+                <p>Your Learning Assistant</p>
+                <div class="context-info" id="context-info">🔍 Loading course context...</div>
+                <!-- Refresh Button -->
+                <button class="refresh-button" id="refresh-button" onclick="refreshConversation()">
+                    <div class="refresh-spinner" id="refresh-spinner"></div>
+                    <span id="refresh-icon">🔄</span>
+                </button>
+            </div>
+      
+            <div class="chat-container">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message ai" id="welcome-message">
+                        👋 Hello! I'm your AI Tutor. I'll help you with questions about your course content!
+                    </div>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="chat-input" placeholder="Ask me about your course..." maxlength="500">
+                    <button id="send-button" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleChat() {
+            document.getElementById("chat-widget").classList.toggle("active");
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        let chatHistory = [];
+        let ltiContext = null;
+        let isInitialized = false;
+        let currentLanguage = 'en';
+
+        // Initialize the widget
+        function initializeWidget() {
+            try {
+                console.log('🚀 Initializing AI Tutor Widget for LTI...');
+                
+                // Load LTI context
+                loadLTIContext();
+                
+                // Setup chat input
+                setupChatInput();
+                
+                // Load conversation history
+                loadConversationHistory();
+                
+                isInitialized = true;
+                console.log('✅ Widget initialized successfully');
+                
+            } catch (error) {
+                console.error('❌ Error initializing widget:', error);
+                updateContextInfo('❌ Initialization failed');
+            }
+        }
+
+        function loadLTIContext() {
+            try {
+                console.log('🔍 Loading LTI context...');
+                updateContextInfo('🔍 Loading course context...');
+                
+                // Get LTI context from the page
+                const ltiContextElement = document.getElementById('lti-context');
+                if (ltiContextElement) {
+                    try {
+                        ltiContext = JSON.parse(ltiContextElement.textContent);
+                        console.log('✅ LTI Context loaded:', ltiContext);
+                        console.log('🔍 LTI Context keys:', Object.keys(ltiContext));
+                        console.log('🔍 Session token:', ltiContext.session_token);
+                        console.log('🔍 Course ID:', ltiContext.course_id);
+                        
+                        if (ltiContext.course_id && ltiContext.course_id !== 'None') {
+                            updateContextInfo(`📚 Course ${ltiContext.course_id} | 👤 ${ltiContext.userName || 'Student'}`);
+                        } else {
+                            updateContextInfo(`👤 ${ltiContext.userName || 'Student'}`);
+                        }
+                    } catch (parseError) {
+                        console.error('❌ Error parsing LTI context:', parseError);
+                        updateContextInfo('⚠️ Context loading failed');
+                    }
+                } else {
+                    console.log('⚠️ No LTI context element found');
+                    updateContextInfo('⚠️ No course context available');
+                }
+                
+            } catch (error) {
+                console.error('❌ Error loading LTI context:', error);
+                updateContextInfo('⚠️ Context loading failed');
+            }
+        }
+
+        function updateContextInfo(message) {
+            const contextInfo = document.getElementById('context-info');
+            if (contextInfo) {
+                contextInfo.textContent = message;
+            }
+        }
+
+        function setupChatInput() {
+            const input = document.getElementById('chat-input');
+            const button = document.getElementById('send-button');
+            
+            // Enter key to send
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+            
+            // Input validation
+            input.addEventListener('input', function() {
+                button.disabled = !input.value.trim();
+            });
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            addMessage('user', message);
+            
+            // Clear input
+            input.value = '';
+            document.getElementById('send-button').disabled = true;
+            
+            // Show typing indicator
+            const typingId = addMessage('ai', '...', 'typing');
+            
+            try {
+                // Send to LTI chat API
+                const aiResponse = await getAIResponse(message);
+                removeMessage(typingId);
+                addMessage('ai', aiResponse);
+                
+            } catch (error) {
+                console.error('❌ Error getting AI response:', error);
+                removeMessage(typingId);
+                addMessage('ai', 'Sorry, I\'m having trouble processing your question right now. Please try again.');
+            }
+            
+            // Re-enable input
+            document.getElementById('send-button').disabled = false;
+        }
+
+        async function getAIResponse(userQuestion) {
+            try {
+                console.log('🤖 Getting AI response for:', userQuestion);
+                
+                if (!ltiContext || !ltiContext.session_token) {
+                    throw new Error('No LTI session available');
+                }
+                
+                const formData = new FormData();
+                formData.append('message', userQuestion);
+                formData.append('session_token', ltiContext.session_token);
+                formData.append('language', currentLanguage);
+                
+                console.log('📤 Request data:', {
+                    message: userQuestion,
+                    session_token: ltiContext.session_token,
+                    language: currentLanguage
+                });
+                
+                const response = await fetch('/lti/course/chatv2', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('📥 AI response data:', data);
+                
+                // Handle different response formats
+                let replyText = '';
+                if (typeof data.answer === 'string') {
+                    replyText = data.answer;
+                } else if (data.reply && typeof data.reply === 'object') {
+                    // If reply is an object, try to extract the text
+                    replyText = data.reply.text || data.reply.message || data.reply.content || JSON.stringify(data.reply);
+                } else {
+                    replyText = 'I apologize, but I couldn\'t generate a response at the moment.';
+                }
+                
+                console.log('🔍 Extracted reply text:', replyText);
+                return replyText;
+                
+            } catch (error) {
+                console.error('❌ Error in getAIResponse:', error);
+                throw error;
+            }
+        }
+
+        function addMessage(sender, text, type = 'normal') {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            
+            messageDiv.id = messageId;
+            messageDiv.className = `message ${sender} ${type}`;
+            
+            // Handle special formatting
+            if (sender === 'ai') {
+                // Quiz question - format with HTML
+                let formattedText = text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold**
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')                // *italic*
+                .replace(/\n/g, '<br>')                               // line breaks
+                .replace(/\* /g, '• ')                                // bullet points
+                .replace(/^\* /gm, '• ');                             // bullet points at start of line
+                messageDiv.innerHTML = formattedText;
+            } else {
+                // Regular message
+                messageDiv.textContent = text;
+                let formatted = text.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                messageDiv.innerHTML = formatted; 
+            }
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Store in chat history
+            chatHistory.push({ id: messageId, sender, text, timestamp: new Date() });
+            
+            return messageId;
+        }
+
+        function removeMessage(messageId) {
+            const message = document.getElementById(messageId);
+            if (message) {
+                message.remove();
+            }
+        }
+        
+        // Load conversation history from context data
+        function loadConversationHistory() {
+            try {
+                // Clear existing messages except the welcome message
+                const messagesContainer = document.getElementById('chat-messages');
+                const welcomeMessage = document.getElementById('welcome-message');
+                
+                // Clear all messages
+                messagesContainer.innerHTML = '';
+                
+                // Add welcome message back
+                if (welcomeMessage) {
+                    
+                    messagesContainer.appendChild(welcomeMessage);
+                } else {
+                    addMessage('ai', '👋 Hello! I\'m your AI Tutor. I\'ll help you with questions about your course content!');
+                }
+                
+                // Convert Jinja template variable to JavaScript object
+                const contextData = {{ context | tojson | safe }};
+                
+                // Now iterate through the data
+                if (contextData && Array.isArray(contextData)) {
+                    contextData.forEach(item => {
+                        console.log("Loading message:", item);
+                        // Access properties like item.key, item.value, etc.
+
+                        if (item.message === "Welcome! How can I help you today?") {
+                            console.log('skipped')
+                        } else {
+                            // Example usage:
+                            const sender = item.from_field === "user" ? "user" : "ai";
+                            addMessage(sender, item.message);
+                        }
+                        
+                    });
+                    
+                    console.log(`✅ Loaded ${contextData.length} messages from history`);
+                } else {
+                    console.log('⚠️ No conversation history found or invalid format');
+                }
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+            } catch (error) {
+                console.error('❌ Error loading conversation history:', error);
+                addMessage('ai', 'Sorry, there was an error loading the conversation history.');
+            }
+        }
+        
+        // Refresh conversation function - MODIFIED VERSION
+        async function refreshConversation() {
+            const refreshButton = document.getElementById('refresh-button');
+            const refreshSpinner = document.getElementById('refresh-spinner');
+            const refreshIcon = document.getElementById('refresh-icon');
+            
+            // Show loading state
+            refreshSpinner.style.display = 'block';
+            refreshIcon.style.display = 'none';
+            refreshButton.disabled = true;
+            
+            try {
+                // First clear all chat messages
+                const messagesContainer = document.getElementById('chat-messages');
+                messagesContainer.innerHTML = '';
+                
+                // Add a loading message
+                addMessage('ai', '🔄 Refreshing conversation...');
+
+                const formData = new FormData();
+                formData.append('message', 'null');
+                formData.append('session_token', ltiContext.session_token);
+                formData.append('language', currentLanguage);
+                
+                // Call the API endpoint
+                const response = await fetch('chat/refresh', {
+                    method: 'POST',
+                    // headers: {
+                    //     'Content-Type': 'application/json',
+                    // },
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log(data)
+                
+                // Clear the loading message
+                messagesContainer.innerHTML = '';
+                
+                // Add welcome message
+                // addMessage('ai', '👋 Hello! I\'m your AI Tutor. Conversation refreshed!');
+                
+                // Process the response data if needed
+                // Show success message
+                // addMessage('ai', '✅ Conversation history refreshed successfully!');
+                
+            } catch (error) {
+                console.error('❌ Error refreshing conversation:', error);
+                
+                // Clear any existing messages
+                const messagesContainer = document.getElementById('chat-messages');
+                messagesContainer.innerHTML = '';
+                
+                // Add error message
+                // addMessage('ai', '❌ Sorry, there was an error refreshing the conversation.');
+                // addMessage('ai', '👋 Hello! I\'m your AI Tutor. I\'ll help you with questions about your course content!');
+            } finally {
+                // Hide loading state
+                addMessage('ai', '👋 Hello! I\'m your AI Tutor. I\'ll help you with questions about your course content!');
+                refreshSpinner.style.display = 'none';
+                refreshIcon.style.display = 'block';
+                refreshButton.disabled = false;
+            }
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', initializeWidget);
+        
+        // Fallback initialization
+        if (document.readyState === 'loading') {
+            console.log('⏳ DOM still loading...');
+        } else {
+            console.log('✅ DOM already ready, initializing...');
+            initializeWidget();
+        }
+    </script>
+
+    <!-- LTI Context Data (hidden) -->
+    <div id="lti-context" style="display: none;">
+        {{ lti_session | tojson }}
+    </div>
+    <div id="convo-history" style="display: none;">
+        {{ context | tojson }}
+    </div>
+</body>
+</html>
