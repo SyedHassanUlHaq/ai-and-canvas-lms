@@ -53,7 +53,8 @@ async def get_module_item_content(module_item_id: int):
             SELECT 
                 m.id as module_id, m.name as module_name, m.position as module_position,
                 mi.title as item_title, mi.item_type, mi.position as item_position,
-                p.body as page_content, p.title as page_title
+                p.body as page_content, p.title as page_title,
+                p.yt_transcript as yt_transcript
             FROM modules m
             JOIN module_items mi ON m.id = mi.module_id
             LEFT JOIN pages p ON mi.id = p.module_item_id
@@ -72,7 +73,8 @@ async def get_module_item_content(module_item_id: int):
                 item_type=row['item_type'],
                 item_position=row['item_position'],
                 page_content=row['page_content'],
-                page_title=row['page_title']
+                page_title=row['page_title'],
+                yt_transcript=row['yt_transcript']
             )
             return ContentResponse(status="success", content=content)
         else:

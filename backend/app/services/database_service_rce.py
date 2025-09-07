@@ -10,6 +10,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+from app.core.config import settings
 
 class DatabaseService:
     """Enhanced database service with course content retrieval"""
@@ -18,9 +19,10 @@ class DatabaseService:
         """Initialize database service"""
         logger.info("Database service initialized with content retrieval")
         
+        
         # Canvas API configuration (this should come from config)
-        self.canvas_url = "https://taclegacy.instructure.com"
-        self.canvas_token = "26855~QMACAaNCYwfCfrZaKCrC6Du8Xfn94y2FCDhL76mKMRrevKAMfEBZGWctTctNwuAk"
+        self.canvas_url = settings.CANVAS_URL
+        self.canvas_token = settings.CANVAS_API_TOKEN
         self.headers = {
             'Authorization': f'Bearer {self.canvas_token}',
             'Content-Type': 'application/json'

@@ -375,7 +375,8 @@
                         itemPosition: content.item_position,
                         pageContent: content.page_content,
                         pageTitle: content.page_title,
-                        moduleId: content.module_id
+                        moduleId: content.module_id,
+                        ytTranscript: content.yt_transcript
                     };
                     
                     console.log('✅ Database content retrieved and stored:', courseContext.databaseContent);
@@ -542,7 +543,8 @@
                     
                     // Include the actual page content for context
                     page_content: courseContext.databaseContent?.pageContent || null,
-                    page_title: courseContext.databaseContent?.pageTitle || null
+                    page_title: courseContext.databaseContent?.pageTitle || null,
+                    yt_transcript: courseContext.databaseContent?.ytTranscript || null
                 };
                 
                 console.log('📤 Request data:', requestData);

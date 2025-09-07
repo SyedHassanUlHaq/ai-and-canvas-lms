@@ -39,3 +39,6 @@ httpx
 requests 
 
 asyncpg
+
+openai-whisper 
+yt-dlp

@@ -192,7 +192,8 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                     "module_position": request.module_context.get('module_position'),
                     "item_title": request.module_context.get('item_title'),
                     "item_type": request.module_context.get('item_type'),
-                    "item_position": request.module_context.get('item_position')
+                    "item_position": request.module_context.get('item_position'),
+                    "yt_transcript": request.module_context.get('yt_transcript')
                 }
             }]
             

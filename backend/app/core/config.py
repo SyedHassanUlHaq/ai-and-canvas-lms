@@ -17,6 +17,13 @@ class Settings(BaseModel):
     api_version: str = "1.0.0"
     api_description: str = "AI-powered tutoring platform integrated with Canvas LMS"
     
+    CANVAS_URL: str = os.getenv("CANVAS_URL")
+    CANVAS_API_TOKEN: str = os.getenv("CANVAS_API_TOKEN")
+
+    # LTI Configuratio
+    LTI_CONSUMER_KEY: str = os.getenv("LTI_CONSUMER_KEY")
+    LTI_SHARED_SECRET: str = os.getenv("LTI_SHARED_SECRET")
+    
     # Server Configuration
     host: str = "0.0.0.0"
     port: int = 8000
