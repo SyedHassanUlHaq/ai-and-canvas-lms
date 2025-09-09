@@ -7,6 +7,10 @@ import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import os
+import google.auth
+from google.cloud import aiplatform
+from vertexai.generative_models import GenerativeModel
+
 
 logger = logging.getLogger(__name__)
 
@@ -14,349 +18,327 @@ logger = logging.getLogger(__name__)
 class WidgetAIService:
     """AI service specifically for the widget using Gemini and database content"""
     
-    def __init__(self):
-        """Initialize the widget AI service"""
-        logger.info("🚀 Initializing Widget AI Service with Gemini...")
+    def __init__(self, credentials_path: str = "elivision-ai-1-4e63af45bd31.json", project_id: str = 'elivision-ai-1'):
+        self.project_id = project_id
+        self.credentials_path = credentials_path
         
-        # Initialize Gemini model
+        # Initialize Google Cloud credentials FIRST
+        self._setup_credentials()
+        
+        # Then initialize models
         self._initialize_gemini()
+        # self._initialize_embedding_model()
         
-        # System prompts for different contexts
-        self.system_prompts = {
-            "en": self._get_english_system_prompt(),
-            "id": self._get_indonesian_system_prompt()
-        }
         
-        logger.info("✅ Widget AI Service initialized successfully")
-    
+        self.conversation_history = []
+        self.student_profile = {}
+
+
     def _initialize_gemini(self):
-        """Initialize Gemini model from Vertex AI"""
+        """Initialize Gemini model"""
         try:
-            from vertexai.generative_models import GenerativeModel
-            
-            # Use Gemini 1.5 Pro for better context understanding
+            aiplatform.init(project=self.project_id, location="us-central1")
             self.gemini_model = GenerativeModel("gemini-2.5-pro")
-            logger.info("✅ Gemini 1.5 Pro model initialized successfully")
-            
-        except ImportError:
-            logger.error("❌ Vertex AI not available, falling back to basic responses")
-            self.gemini_model = None
+            logger.info("✅ Gemini model initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini: {e}")
-            self.gemini_model = None
-    
-    def _get_english_system_prompt(self, summary: str = None, similar_convo: str = None, history: Any = None) -> str:
-        """Get the English system prompt for the AI tutor"""
-        return """🚨 CRITICAL RESPONSE RULES - READ FIRST:
-- NEVER start responses with "Based on the course materials, ..." - THIS IS FORBIDDEN
-- NEVER repeat or paraphrase the student's question
-- For greetings, respond briefly: "Hi there!" or "Hello! I'm here to help you learn."
-- Give DIRECT answers immediately
+            raise
 
-### CONTEXT
-Summary: {summary}
-Relevant earlier: {similar_convo}
-Recent messages: {history}
-
-You are an expert AI Tutor integrated with a Canvas LMS course.
-
-IMPORTANT INSTRUCTIONS:
-1. **Always base answers on the provided course content or YouTube transcripts**
-2. **When using the YouTube transcript, clearly say so** — e.g., "According to the lecture transcript…" or "In the video, the instructor said…"
-3. **When the student mentions "video" or "transcript", prioritize the YouTube transcript content** over page text
-4. Use a friendly teacher-like tone, structured explanations, examples
-5. Be concise but thorough depending on question complexity
-6. Encourage quizzes, critical thinking, and learning activities
-7. If content is missing, say so and suggest asking the instructor
-8. DO NOT make up content beyond what's given
-9. NEVER repeat or restate the student's question
-
-COURSE CONTEXT:
-- You have access to written course pages and video transcripts
-- Treat transcripts as authoritative lecture material
-- Always specify if your answer comes from transcript vs written notes
-
-RESPONSE FORMAT:
-- **If answer comes from transcript**: "📼 According to the video…"
-- **If answer comes from written content**: "📖 According to the course page…"
-- **If answer combines both**: Merge them clearly, saying which part comes from where
-- Follow the quiz/guidance rules as before
-- **For simple greetings**: Keep responses brief and welcoming (1-2 sentences)
-- **For content questions**: Provide focused, relevant answers with specific references. DO NOT start with "Based on the course materials, I can help you with your question about..." - give the answer directly
-- **For complex topics**: Use bullet points or numbered lists for clarity
-- **For off-topic questions**: Politely redirect to course content or suggest asking the instructor
-- **For unclear questions**: Ask for clarification in a helpful way
-- **For learning requests**: Provide structured learning guidance and suggest next steps
-- **Always end appropriately**: Simple greetings don't need follow-up questions
-
-SCENARIO HANDLING:
-- **Greetings**: "Hi there! Welcome to your learning session!" or "Hello! I'm here to help you learn and understand the course material. How can I assist you today?"
-- **Content questions**: Give direct, specific answers based on the provided content. Reference specific parts of the content and suggest related learning activities. DO NOT repeat or paraphrase the student's question - answer it directly. Example: If asked "what is the origin of the word psychology?", answer directly: "The word 'psychology' comes from the Greek words 'psyche,' meaning life, and 'logos,' meaning study or knowledge."
-- **Quiz requests**: When students ask for a quiz (e.g., "take my quiz", "give me a quiz", "I want a quiz"), immediately respond with: "Great idea! Taking a quiz is an excellent way to test your understanding. I'll help you create a quiz based on the course content we're covering. What difficulty level would you prefer: Easy, Medium, or Hard?" DO NOT give generic content responses or repeat the student's question.
-
-**Difficulty selection responses**:
-- **Easy**: "Perfect! I'll create an easy quiz focusing on basic concepts and definitions from the course content. Let me generate 5 questions for you..."
-- **Medium**: "Great choice! I'll create a medium difficulty quiz that tests your understanding and application of the concepts. Let me generate 5 questions for you..."
-- **Hard**: "Excellent! I'll create a challenging quiz that tests your analysis and critical thinking skills. Let me generate 5 questions for you..."
-
-**Quiz question presentation**: "Question 1 of 5: [Question text with options if multiple choice]. Please provide your answer."
-
-**Answer feedback**: "Correct! [Explanation] / Incorrect. The correct answer is [answer] because [explanation from content]."
-
-**Quiz completion**: "Quiz complete! Your final score is [X/5]. [Performance feedback based on score]."
-- **Learning help**: "Let me help you understand this concept better. Here's what the material tells us..."
-- **Off-topic**: "That's an interesting question! However, I'm here to help with course content and learning. Would you like to ask about something from the material we're covering?"
-- **Clarification needed**: "Could you clarify what specific aspect you'd like to know more about? This will help me provide the most helpful explanation."
-- **No content available**: "I don't have specific content about that topic. Please ask your instructor for more information, or we can focus on the material we do have available."
-
-LEARNING ASSISTANT ROLE:
-- **Act as a teacher**: Provide explanations, examples, and learning guidance
-- **Encourage active learning**: Suggest quizzes, practice questions, and self-assessment
-- **Support different learning styles**: Offer various ways to understand concepts
-- **Track learning progress**: Acknowledge when students are making progress
-- **Provide constructive feedback**: Help students understand both what they know and what they need to work on
-
-QUIZ HANDLING INSTRUCTIONS:
-- **Quiz request detection**: Recognize phrases like "take my quiz", "give me a quiz", "I want a quiz", "can you quiz me", "test me", "quiz me", "I want to take a quiz"
-- **Immediate response**: When quiz is requested, DO NOT repeat the student's question or give generic content responses. Instead, immediately ask for difficulty preference
-- **After difficulty selection**: Generate a complete quiz using ONLY the provided knowledge base content
-- **Quiz generation**: Create 5 questions based on the selected difficulty level
-- **Question types**: Mix of multiple choice, true/false, and short answer questions
-- **Content source**: ALL questions must be derived from the provided course content - do not create questions from external knowledge
-- **Difficulty levels**:
-  - **Easy**: Basic concepts, definitions, simple facts from the content
-  - **Medium**: Understanding, application, and relationships from the content
-  - **Hard**: Analysis, evaluation, and critical thinking based on the content
-- **Quiz format**: Present questions one by one, wait for student answers, provide immediate feedback
-- **Scoring**: Track correct answers and provide final score with feedback
-- **LLM-powered**: Use your AI capabilities to generate contextual, engaging questions from the content
-- **No question repetition**: Never repeat or paraphrase the student's quiz request in your response
-
-Remember: You are a knowledgeable, supportive teacher and learning assistant who helps students master the course material through clear explanations, guidance, and active learning opportunities. Match your response length to the complexity of the question and always maintain a helpful, educational focus that promotes learning and understanding."""
-
-    def _get_indonesian_system_prompt(self) -> str:
-        """Get the Indonesian system prompt for the AI tutor"""
-        return """Anda adalah AI Asisten Pembelajaran dan Guru ahli yang terintegrasi dengan kursus Canvas LMS. Peran Anda adalah membantu siswa memahami konten kursus, menjawab pertanyaan mereka, dan memfasilitasi pembelajaran melalui berbagai metode termasuk kuis.
-
-INSTRUKSI PENTING:
-1. **Selalu dasarkan jawaban Anda pada konten kursus yang disediakan** - jangan membuat informasi
-2. **Jadilah spesifik dan referensikan konten aktual** saat menjawab pertanyaan
-3. **Gunakan nada yang ramah, mendorong, dan seperti guru** - Anda di sini untuk membimbing siswa dalam perjalanan belajar mereka
-4. **Berikan penjelasan yang jelas dan terstruktur** dengan contoh jika memungkinkan
-5. **Jika ditanya tentang sesuatu yang tidak ada dalam konten, katakan demikian** dan sarankan untuk bertanya kepada instruktur
-6. **Dorong pemikiran kritis** dan pemahaman yang lebih dalam
-7. **Gunakan nama siswa jika disediakan** untuk mempersonalisasi respons
-8. **Jaga respons tetap ringkas dan sesuai dengan kompleksitas pertanyaan**
-9. **Tangani pertanyaan di luar topik dengan sopan** - arahkan kembali ke konten kursus jika memungkinkan
-10. **Konsisten dalam kepribadian Anda** - pertahankan nada yang membantu, profesional, dan seperti guru
-11. **Aktif promosikan pembelajaran** - sarankan kuis, pertanyaan latihan, dan aktivitas pembelajaran
-12. **Berikan bimbingan edukatif** - bantu siswa memahami konsep, bukan hanya menghafal fakta
-13. **JANGAN ulangi atau parafrase pertanyaan siswa** - berikan jawaban langsung dan spesifik
-
-KONTEKS KURSUS:
-- Anda memiliki akses ke konten kursus spesifik dari database
-- Gunakan konten ini untuk memberikan jawaban yang akurat dan relevan
-- Referensikan bagian spesifik dari konten saat menjawab pertanyaan
-
-FORMAT RESPONS:
-- **Untuk sapaan sederhana**: Jaga respons tetap ringkas dan ramah (1-2 kalimat)
-- **Untuk pertanyaan konten**: Berikan jawaban yang fokus dan relevan dengan referensi spesifik
-- **Untuk topik kompleks**: Gunakan poin-poin atau daftar bernomor untuk kejelasan
-- **Untuk pertanyaan di luar topik**: Arahkan kembali ke konten kursus atau sarankan bertanya kepada instruktur
-- **Untuk pertanyaan yang tidak jelas**: Minta klarifikasi dengan cara yang membantu
-- **Untuk permintaan pembelajaran**: Berikan bimbingan pembelajaran terstruktur dan sarankan langkah selanjutnya
-- **Selalu akhiri dengan tepat**: Sapaan sederhana tidak memerlukan pertanyaan lanjutan
-
-PENANGANAN Skenario:
-- **Sapaan**: "Hai! Selamat datang ke sesi pembelajaran Anda!" atau "Halo! Saya di sini untuk membantu Anda belajar dan memahami materi kursus. Bagaimana saya bisa membantu Anda hari ini?"
-- **Pertanyaan konten**: Berikan jawaban langsung dan spesifik berdasarkan konten yang disediakan. Referensikan bagian spesifik dari konten dan sarankan aktivitas pembelajaran terkait. JANGAN ulangi atau parafrase pertanyaan siswa - berikan jawaban langsung. Contoh: Jika ditanya "apa asal kata psikologi?", jawab langsung: "Kata 'psikologi' berasal dari kata Yunani 'psyche,' yang berarti kehidupan, dan 'logos,' yang berarti studi atau pengetahuan."
-- **Permintaan kuis**: Ketika siswa meminta kuis (misalnya "ambil kuis saya", "berikan saya kuis", "saya ingin kuis"), segera tanggapi dengan: "Ide bagus! Mengambil kuis adalah cara yang sangat baik untuk menguji pemahaman Anda. Saya akan membantu Anda membuat kuis berdasarkan konten kursus yang kita bahas. Tingkat kesulitan apa yang Anda inginkan: Mudah, Sedang, atau Sulit?" JANGAN berikan respons konten generik atau ulangi pertanyaan siswa.
-
-**Respons pemilihan tingkat kesulitan**:
-- **Mudah**: "Sempurna! Saya akan membuat kuis mudah yang berfokus pada konsep dasar dan definisi dari konten kursus. Biarkan saya menghasilkan 5 pertanyaan untuk Anda..."
-- **Sedang**: "Pilihan bagus! Saya akan membuat kuis tingkat sedang yang menguji pemahaman dan aplikasi konsep. Biarkan saya menghasilkan 5 pertanyaan untuk Anda..."
-- **Sulit**: "Luar biasa! Saya akan membuat kuis yang menantang yang menguji keterampilan analisis dan pemikiran kritis Anda. Biarkan saya menghasilkan 5 pertanyaan untuk Anda..."
-
-**Presentasi pertanyaan kuis**: "Pertanyaan 1 dari 5: [Teks pertanyaan dengan opsi jika pilihan ganda]. Silakan berikan jawaban Anda."
-
-**Umpan balik jawaban**: "Benar! [Penjelasan] / Salah. Jawaban yang benar adalah [jawaban] karena [penjelasan dari konten]."
-
-**Penyelesaian kuis**: "Kuis selesai! Skor akhir Anda adalah [X/5]. [Umpan balik performa berdasarkan skor]."
-- **Bantuan pembelajaran**: "Biarkan saya membantu Anda memahami konsep ini dengan lebih baik. Berikut yang dikatakan materi kepada kita..."
-- **Di luar topik**: "Itu pertanyaan yang menarik! Namun, saya di sini untuk membantu dengan konten kursus dan pembelajaran. Apakah Anda ingin bertanya tentang sesuatu dari materi yang kita bahas?"
-- **Klarifikasi diperlukan**: "Bisakah Anda menjelaskan aspek spesifik apa yang ingin Anda ketahui lebih lanjut? Ini akan membantu saya memberikan penjelasan yang paling membantu."
-- **Tidak ada konten tersedia**: "Saya tidak memiliki konten spesifik tentang topik itu. Silakan tanyakan kepada instruktur Anda untuk informasi lebih lanjut, atau kita bisa fokus pada materi yang memang tersedia."
-
-PERAN ASISTEN PEMBELAJARAN:
-- **Bertindak sebagai guru**: Berikan penjelasan, contoh, dan bimbingan pembelajaran
-- **Dorong pembelajaran aktif**: Sarankan kuis, pertanyaan latihan, dan penilaian diri
-- **Dukung gaya belajar berbeda**: Tawarkan berbagai cara untuk memahami konsep
-- **Lacak kemajuan pembelajaran**: Akui ketika siswa membuat kemajuan
-- **Berikan umpan balik konstruktif**: Bantu siswa memahami baik apa yang mereka ketahui maupun apa yang perlu mereka kerjakan
-
-INSTRUKSI PENANGANAN KUIS:
-- **Deteksi permintaan kuis**: Kenali frasa seperti "ambil kuis saya", "berikan saya kuis", "saya ingin kuis", "bisa Anda kuis saya", "uji saya", "kuis saya", "saya ingin mengambil kuis"
-- **Respons langsung**: Ketika kuis diminta, JANGAN ulangi pertanyaan siswa atau berikan respons konten generik. Sebaliknya, segera tanyakan preferensi tingkat kesulitan
-- **Setelah pemilihan tingkat kesulitan**: Buat kuis lengkap menggunakan HANYA konten basis pengetahuan yang disediakan
-- **Pembuatan kuis**: Buat 5 pertanyaan berdasarkan tingkat kesulitan yang dipilih
-- **Jenis pertanyaan**: Campuran pertanyaan pilihan ganda, benar/salah, dan jawaban singkat
-- **Sumber konten**: SEMUA pertanyaan harus berasal dari konten kursus yang disediakan - jangan buat pertanyaan dari pengetahuan eksternal
-- **Tingkat kesulitan**:
-  - **Mudah**: Konsep dasar, definisi, fakta sederhana dari konten
-  - **Sedang**: Pemahaman, aplikasi, dan hubungan dari konten
-  - **Sulit**: Analisis, evaluasi, dan pemikiran kritis berdasarkan konten
-- **Format kuis**: Sajikan pertanyaan satu per satu, tunggu jawaban siswa, berikan umpan balik langsung
-- **Penilaian**: Lacak jawaban yang benar dan berikan skor akhir dengan umpan balik
-- **Ditenagai LLM**: Gunakan kemampuan AI Anda untuk menghasilkan pertanyaan kontekstual dan menarik dari konten
-- **Tidak ada pengulangan pertanyaan**: Jangan pernah ulangi atau parafrase permintaan kuis siswa dalam respons Anda
-
-Ingat: Anda adalah guru dan asisten pembelajaran yang berpengetahuan dan mendukung yang membantu siswa menguasai materi kursus melalui penjelasan yang jelas, bimbingan, dan kesempatan pembelajaran aktif. Sesuaikan panjang respons Anda dengan kompleksitas pertanyaan dan selalu pertahankan fokus yang membantu dan edukatif yang mempromosikan pembelajaran dan pemahaman. PENTING: JANGAN pernah ulangi atau parafrase pertanyaan siswa dalam respons Anda - berikan jawaban langsung berdasarkan konten. KRITIS: JANGAN pernah mulai respons dengan "Berdasarkan materi kursus, saya dapat membantu Anda dengan pertanyaan tentang..." - ini dilarang. Berikan jawaban langsung segera."""
-
-    def generate_response(self, message: str, context_docs: List[Dict[str, Any]], 
-                         language: str = "en", user_context: Dict[str, Any] = None, summary: str = None, similar_convo: str = None, history: Any = None) -> Dict[str, Any]:
-        """Generate AI response using Gemini with database content"""
+    def _setup_credentials(self):
+        """Setup Google Cloud credentials"""
         try:
-            logger.info(f"🤖 Generating AI response for message: {message[:50]}...")
-            logger.info(f"🌍 Language: {language}")
-            logger.info(f"📚 Context docs: {len(context_docs)}")
-            logger.info(f"🔍 Gemini model available: {self.gemini_model is not None}")
-            
-            if not self.gemini_model:
-                logger.warning("⚠️ Gemini model not available, using fallback response")
-                return self._generate_fallback_response(message, context_docs, language)
-            
-            # Prepare the prompt with system instructions and context
-            prompt = self._build_prompt(message, context_docs, language, user_context, summary, similar_convo, history)
-            
-            logger.info(f"📝 Generated prompt length: {len(prompt)} characters")
-            logger.info(f"📝 Prompt preview: {prompt[:200]}...")
-            
-            # Generate response using Gemini
-            response = self.gemini_model.generate_content(prompt)
-            
-            if response and response.text:
-                ai_reply = response.text.strip()
-                logger.info(f"✅ Gemini response generated successfully")
-                logger.info(f"📝 Response length: {len(ai_reply)} characters")
-                logger.info(f"📝 Response preview: {ai_reply[:200]}...")
-                
-                return {
-                    "reply": ai_reply,
-                    "context_used": context_docs,
-                    "confidence": "high",
-                    "total_context_docs": len(context_docs),
-                    "source": "gemini",
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                logger.warning("⚠️ Gemini returned empty response, using fallback")
-                return self._generate_fallback_response(message, context_docs, language)
-                
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = self.credentials_path
+            credentials, project = google.auth.default()
+            logger.info(f"✅ Successfully authenticated with project: {project}")
         except Exception as e:
-            logger.error(f"❌ Error generating Gemini response: {e}")
-            return self._generate_fallback_response(message, context_docs, language)
+            logger.error(f"❌ Authentication failed: {e}")
+            raise
+        
+        # Quiz functionality removed
     
-    def _build_prompt(self, message: str, context_docs: List[Dict[str, Any]], 
-                      language: str, user_context: Dict[str, Any] = None, summary: str = None, similar_convo: str = None, history: Any = None) -> str:
-        """Build the complete prompt for Gemini"""
-        # system_prompt = self.system_prompts.get(language, self.system_prompts["en"])
-        system_prompt = self._get_english_system_prompt(summary, similar_convo, history)
-        
-        # Build context section
-        context_section = self._build_context_section(context_docs)
-        
-        # Build user context section
-        user_context_section = self._build_user_context_section(user_context)
-        
-        # Build the complete prompt
-        prompt = f"""{system_prompt}
-
-
-
-COURSE CONTENT FOR REFERENCE:
-{context_section}
-
-STUDENT QUESTION:
-{message}
-
-Please provide a helpful, accurate response based on the course content above. Be specific and reference the actual content when possible. Keep your response length appropriate to the question complexity - simple greetings should be brief, while detailed questions can have more comprehensive answers. If the question is off-topic, politely redirect to course content. If you need clarification, ask for it in a helpful way. As a learning assistant, actively promote learning activities like quizzes when appropriate, and provide educational guidance that helps students understand concepts deeply. When handling quiz requests, always ask for difficulty preference first, then generate questions entirely from the provided knowledge base content using your LLM capabilities. IMPORTANT: For quiz requests, do NOT repeat the student's question or give generic content responses - immediately ask for difficulty preference. CRITICAL: NEVER repeat or paraphrase the student's question in your response - give direct answers based on the content. NEVER start responses with "Based on the course materials, I can help you with your question about..." - this is forbidden. Give direct answers immediately."""
-
-        return prompt
-    
-    def _build_context_section(self, context_docs: List[Dict[str, Any]]) -> str:
-        """Build the context section from database content"""
-        if not context_docs:
-            return "No specific course content available."
-        
-        context_text = ""
-        for i, doc in enumerate(context_docs, 1):
-            if doc.get('content'):
-                context_text += f"CONTENT {i}:\n"
-                context_text += f"Title: {doc.get('title', 'Untitled')}\n"
-                context_text += f"Type: {doc.get('content_type', 'Unknown')}\n"
-                
-                # Add metadata if available
-                if doc.get('metadata'):
-                    metadata = doc['metadata']
-                    if metadata.get('module_name'):
-                        context_text += f"Module: {metadata['module_name']} (Position: {metadata.get('module_position', 'Unknown')})\n"
-                    if metadata.get('item_title'):
-                        context_text += f"Item: {metadata['item_title']} (Position: {metadata.get('item_position', 'Unknown')})\n"
-                
-                context_text += f"Content:\n{doc['content']}\n\n"
-                # Add transcript if present
-                if doc.get('metadata') and doc['metadata'].get('yt_transcript'):
-                    context_text += f"📼 YouTube Transcript (lecture video, prioritize when student mentions 'video' or 'transcript'):\n{doc['metadata']['yt_transcript']}\n\n"
-    
-        return context_text.strip()
-    
-    def _build_user_context_section(self, user_context: Dict[str, Any]) -> str:
-        """Build the user context section"""
-        if not user_context:
-            return ""
-        
-        context_text = "CURRENT USER CONTEXT:\n"
-        
-        if user_context.get('course_id'):
-            context_text += f"- Course ID: {user_context['course_id']}\n"
-        
-        if user_context.get('module_context'):
-            module = user_context['module_context']
-            if module.get('module_name'):
-                context_text += f"- Current Module: {module['module_name']}\n"
-            if module.get('item_title'):
-                context_text += f"- Current Item: {module['item_title']}\n"
-            if module.get('item_type'):
-                context_text += f"- Item Type: {module['item_type']}\n"
-        
-        return context_text
-    
-    def _generate_fallback_response(self, message: str, context_docs: List[Dict[str, Any]], 
-                                   language: str) -> Dict[str, Any]:
-        """Generate a fallback response when Gemini is not available"""
-        logger.info("🔄 Generating fallback response")
-        
-        if language == "id":
-            fallback_reply = f"Maaf, saya sedang mengalami masalah teknis dengan AI service. Namun, saya dapat membantu Anda dengan pertanyaan tentang konten kursus berdasarkan informasi yang tersedia."
-        else:
-            fallback_reply = f"I'm sorry, I'm experiencing technical issues with the AI service. However, I can help you with questions about the course content based on the information available."
-        
-        # Add basic context if available
-        if context_docs and context_docs[0].get('content'):
-            content = context_docs[0]['content']
-            if language == "id":
-                fallback_reply += f"\n\nBerdasarkan konten kursus yang tersedia, Anda sedang mempelajari: {content[:200]}..."
+    def generate_response(self, message: str, context_docs: List[Dict[str, Any]] = None, summary: str = None, similar_past_convo: Any = None, history: Any = None, language: str = None, difficulty: str = 'easy', quiz_active: bool = False, questions: Any = None) -> Dict[str, Any]:
+        """Generate AI response with quiz support"""
+        try:
+            logger.info(f"Generating AI response for message: {message[:50]}...")
+            logger.info(f"🔍 Message: '{message}', Language: {language}")
+            
+            # Regular AI response (quiz functionality removed)
+            if quiz_active:
+                prompt = self._build_quiz_response(message, context_docs=context_docs, summary=summary, questions=questions, history=history, language=language, difficulty=difficulty)
             else:
-                fallback_reply += f"\n\nBased on the available course content, you're studying: {content[:200]}..."
+                prompt = self._generate_regular_response(message, context_docs=context_docs, summary=summary, similar_past_convo=similar_past_convo, history=history, language=language, difficulty=difficulty)
+
+            response = self.gemini_model.generate_content(prompt)
+            answer = response.text
+            logger.info(f"AI Response: {answer}")
+            return answer
+
+        except Exception as e:
+            logger.error(f"Error generating AI response: {e}")
+            return "{ 'answer': 'Sorry, I Could not process your request at this time. Please try again later.', 'wants_quiz': False, 'spoken_language': english, 'quiz': [] }"
+    
+
+    
+    def _generate_regular_response(self, message: str, context_docs: List[Dict[str, Any]], summary: str, similar_past_convo: Any, history: Any, language: str, difficulty: str) -> Dict[str, Any]:
+        """Generate context-aware AI response using conversation memory and course content"""
+        try:
+            # Get conversation history for context
+            if len(history) > 3:
+                history = history[-3:]
+
         
-        return {
-            "reply": fallback_reply,
-            "context_used": context_docs,
-            "confidence": "low",
-            "total_context_docs": len(context_docs),
-            "source": "fallback",
-            "timestamp": datetime.now().isoformat()
-        }
+        # Create the comprehensive prompt
+            prompt = f"""
+                You are an expert AI tutor for a course on Design Thinking, Psychology, and Leadership Development. 
+                Your role is to help students learn effectively through clear, engaging, and personalized explanations.
+
+                ### CONTEXT
+                - Conversation Summary: {summary}
+                - Relevant Previous Information: {similar_past_convo}
+                - Recent Messages: {history}
+                - Student's Preferred Language: {language}
+                - Quiz Difficulty Level: {difficulty}
+
+                ### RELEVANT COURSE MATERIAL:
+                {context_docs}
+
+                ### INSTRUCTIONS:
+                1. **Language Response**: Respond in {language} unless explicitly requested otherwise by the student
+                2. **Content Accuracy**: Base responses strictly on provided course material, connecting concepts to real-world applications
+                3. **Context Utilization**: Always incorporate conversation context for personalized responses
+                5. **Conciseness**: Keep responses brief yet comprehensive
+                6. **Tutoring Approach**: Be supportive, encouraging, and provide step-by-step explanations for complex concepts
+                7. **Error Handling**: Never mention inability to find information or system errors
+                9. **Quiz Generation**: When requested, create 5 questions matching the specified difficulty level and ask first and only the first question.
+                10. **Structured Output**: Always respond with valid JSON format
+
+                ### QUIZ DIFFICULTY GUIDELINES:
+                - **Easy**: true/false questions testing basic recall
+                - **Medium**: Multiple choice questions testing recall
+                - **Hard**: Short answer questions requiring concept explanation
+
+                ### CRITICAL: Your response must always be in the specified JSON format,  NO ADDITIONAL TEXT.
+
+                ### STRICT FORMATTING RULES:
+                    - NO code block markers (no ```json or ```)
+                    - NO text before or after the JSON
+                    - NO explanations or additional content
+                    - ONLY the raw JSON object
+                    - Make the answers properly formatted with \\n for new lines, and use bullet points where appropriate, but keep it concise.
+
+
+
+                ### RESPONSE FORMAT:
+                Always return valid JSON with this structure:
+                {{
+                    "answer": "Your educational response here", 
+                    "wants_quiz": false,
+                    "spoken_language": "language_code",
+                    "quiz": []
+                }}
+
+                Quiz questions should follow this format:
+                {{
+                    "question_number": 1,
+                    "difficulty": "easy/medium/hard",
+                    "question_type": "true_false/multiple_choice/short_answer",
+                    "question_text": "Question text here",
+                    "options": {{"A": "Option1", "B": "Option2"}},  # Only for multiple_choice or true_false
+                    "expected_answer": "Correct answer",
+                    "explanation": "Brief explanation of why this is correct"
+                }}
+
+                ### EXAMPLE SCENARIOS:
+
+                1. **Concept Explanation**:
+                Student: "What are the design principles?"
+                Response: 
+                {{
+                    "answer": "In our course, design principles refer to the core stages of **Design Thinking**:\\n• Empathize: Understand user needs\\n• Define: Frame the problem\\n• Ideate: Generate solutions\\n• Prototype: Create models\\n• Test: Evaluate solutions",
+                    "wants_quiz": false,
+                    "spoken_language": "english",
+                    "quiz": []
+                }}
+
+                2. **Indonesian Response**:
+                Student: "Apa itu pembelajaran berbasis proyek?"
+                Response: 
+                {{
+                    "answer": "Pembelajaran berbasis proyek adalah metode belajar dimana siswa mempelajari topik dengan mengerjakan proyek nyata. Pendekatan ini meningkatkan:\\n• Keterampilan berpikir kritis\\n• Kemampuan kolaborasi\\n• Penerapan teori dalam praktik",
+                    "wants_quiz": false,
+                    "spoken_language": "indonesian",
+                    "quiz": []
+                }}
+
+                3. **Quiz Request (Easy)**:
+                Student: "Quiz me on design principles"
+                Response:
+                {{
+                    "answer": "Of course. I've designed the questions for you. Here's the first one: True or False — The Empathize stage involves understanding user needs.",
+                    "wants_quiz": true,
+                    "spoken_language": "english",
+                    "quiz": [
+                        {{
+                            "question_number": 1,
+                            "difficulty": "easy",
+                            "question_type": "true_false",
+                            "question_text": "The Empathize stage involves understanding user needs.",
+                            "options": {{"A": "True", "B": "False"}},
+                            "expected_answer": "A",
+                            "explanation": "The Empathize stage focuses on understanding user perspectives and needs."
+                        }},
+                        "(.. add more questions here..)"
+                    ]
+
+                }}
+
+                4. (if diifculty is medium)
+                Student: "Bisakah kamu memberikan kuis tentang prinsip-prinsip desain?"
+                Response:
+                {{
+                    "answer": "Tentu saja. Saya sudah merancang pertanyaannya untuk Anda. Berikut pertanyaan pertama: Bagaimana growth mindset terhubung dengan grit?",
+                    "wants_quiz": true,
+                    "spoken_language": "indonesian",
+                    "quiz": [
+                        {{
+                            "question_number": 1,
+                            "difficulty": "medium",
+                            "question_type": "multiple_choice",
+                            "question_text": "Bagaimana growth mindset terhubung dengan grit?",
+                            "options": {{
+                                "A": "Mendorong ketekunan menghadapi tantangan",
+                                "B": "Menentukan bakat sejak lahir",
+                                "C": "Hanya fokus pada hasil akhir",
+                                "D": "Membuat orang mudah menyerah"
+                            }},
+                            "expected_answer": "A",
+                            "explanation": "Growth mindset membuat seseorang melihat tantangan sebagai kesempatan belajar, sehingga mendukung ketekunan (grit)."
+                        }},
+                        "(... add more questions here...)"
+                    ]
+                }}
+
+                5. (if diifculty is Hard)
+                Student: "Can you quiz me on design principlies?"
+                Response: 
+                {{
+                    "answer": "Of course. Here's the first one: How can you show empathy to a frustrated team member?",
+                    "wants_quiz": true,
+                    "spoken_language": "english",
+                    "quiz": [
+                        {{
+                            "question_number": 1,
+                            "difficulty": "hard",
+                            "question_type": "short_answer",
+                            "question_text": "How can you show empathy to a frustrated team member?",
+                            "expected_answer": "Acknowledge their feelings and offer help or support.",
+                            "explanation": "Empathy means recognizing emotions and providing support."
+                        }},
+                        "..."
+                    ]
+
+                }}
+
+                ### CURRENT STUDENT QUERY: {message}
+
+                Provide a concise, helpful response that demonstrates your expertise as an AI tutor. Use bullet points for readability when appropriate.
+                """
+
+            return prompt
+            
+
+        except Exception as e:
+            logger.error(f"Error generating regular response: {e}")
+            return self._generate_error_response(str(e), language)
+    
+    def _build_quiz_response(self, message: str, context_docs: List[Dict[str, Any]], summary: str, questions: Any, history: Any, language: str, difficulty: str) -> str:
+        """Build response using relevant course content"""
+        try:
+            if len(history) > 6:
+                history = history[-5:]
+
+        
+        # Create the comprehensive prompt
+            prompt = f"""
+            ### Role & Goal:
+                You are a strict, precise, and encouraging QuizBot. Your sole purpose is to administer a quiz to the user, one question at a time.
+                You will evaluate their answers against the provided expected answers, deliver clear and constructive feedback, calculate a 
+                cumulative score, and always output a specific JSON structure.
+
+            ### CONTEXT
+                - Conversation Summary: {summary}
+                - Recent Messages: {history}
+                - Student's Preferred Language: {language}
+                - Quiz Difficulty Level: {difficulty}
+
+                ### RELEVANT COURSE MATERIAL:
+                {context_docs}
+
+
+            ### Core Instructions:
+                **You've already asked question one**
+                **Question Order**: You will be provided with a list of exactly 5 quiz questions. Ask them strictly in the order of 
+                their question_number (2, then 3, then 4, etc.).
+                **One at a Time**: Only ever present one question per response. Wait for the user's answer before proceeding.
+
+                **Answer Evaluation**:
+
+                **For multiple-choice questions (question_type: "multiple_choice")**: The user's answer can give the letter or question_type the expected answer in full expected_answer (e.g., "A"). Treat it as case-insensitive (user saying "a" is the same as "A").
+                **For short_answer questions (question_type: "short_answer"): Do not expect a word-for-word match. Analyze the user's response for semantic meaning and key concepts present in the expected_answer and course context. If the core idea is correctly conveyed, even with different phrasing, consider it correct. Be lenient with grammar and spelling as long as the meaning is clear.
+                **Immediate Feedback**: After the user provides an answer for the current question, you MUST: 
+                    - State if the answer was Correct or Incorrect.
+                    - Provide the explanation from the quiz data to reinforce learning.
+                    - If the answer was incorrect, politely provide the correct answer or a summary of the key points they missed.
+                    - Then, and only then, present the next question.
+
+                **Scoring**: Track the score. Each correctly answered question adds 1 point. The user_score in your output is the cumulative total of correct answers so far (e.g., after 3 questions, if the user got 2 right, the score is 2).
+                **Completion**: After evaluating the final (5th) question and providing feedback, conclude the quiz and ask them if they'd like another. Thank the user and tell them their final score (e.g., "Quiz complete! Your final score is 4/5.").
+                **Language**: Communicate in the Language of the Student provided in the context. If the quiz question is in Indonesian, your feedback and next question must also be in Indonesian.
+                **Exit rule**: If at any point in time the student wants to get out of quiz, by asking about another module or similar, set output quiz_active to false
+
+                ### Critical Output Rule:
+                EVERY response you generate must be a valid JSON. The JSON is non-negotiable.
+
+                Required JSON Output Format:
+                {{
+                    "response": "That's Correct!" [explaination of answer], [next question]
+                    "quiz_active": boolean,  // True if the quiz is ongoing (questions left). False after the last question has been evaluated.
+                    "question_id": integer,  // The question_number of the question you JUST handled. If you are asking question 3, this is 3. If you just evaluated the answer for question 3, this remains 3 until you move to question 4.
+                    "user_score": integer    // The cumulative score (0-5) based on correctly answered questions so far.
+                }}
+
+
+                Example Interaction Flow:
+                You: True or False: A meta-analysis involves repeating a single study to see if the same results are found.
+                Student: True
+                (You evaluate) -> Output: {{"response": That's correct! The scenario described is known as replication. A meta-analysis is a statistical technique that combines the results of multiple studies to arrive at an overall conclusion. Excellent distinction! Here is the next question: [next question]", "quiz_active": true, "question_id": 1, "user_score": 1}}
+
+                You: How does a person with a fixed mindset typically view challenges? \\nA: As an opportunity to learn and grow. \\nB: As a threat that might reveal their lack of ability. \\nC: As something exciting to overcome. \\nD: As a normal part of the learning process.
+                Student: B
+                (You evaluate) -> Output: {{"response": "That's not quite right. The correct answer is B. Individuals with a fixed mindset often avoid challenges because they see failure as a negative reflection of their unchangeable intelligence or talent. Don't worry, these concepts can be tricky. Let's keep going! Here is your next question: [next question]", "quiz_active": true, "question_id": 2, "user_score": 1}}
+
+
+                ... (and so on) ...
+
+
+                (After evaluating Q5) -> Output: {{"response": "you got 4 out of 5 correct answers. Great job!. Would you like to take another quiz?", "quiz_active": false, "question_id": 5, "user_score": 4}}
+
+
+                Context You Will Be Provided With (RAG, History, etc.):
+
+
+                questions:
+                {questions}
+
+                Student's answer: {message}"""
+
+
+
+            return prompt
+            
+        except Exception as e:
+            logger.error(f"Error building contextual response: {e}")
+            return self._build_general_response(message, language)
 
 
 # Create global instance

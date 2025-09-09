@@ -1,20 +1,15 @@
 import os
 import pathlib
 from pydoc import doc
-from fastapi import FastAPI, HTTPException, status, BackgroundTasks, APIRouter
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException, status, APIRouter
 from pydantic import BaseModel
 import logging
 from typing import Optional
 
 from app.services.huggingface_embeddings import embed_course_doc
-# from app.repository.vector import CourseChunkRepository
 from app.core.dependancies import get_db
 
-# from repository.vector import CourseChunkRepository
 
-# Initialize FastAPI app
-# app = FastAPI(title="Course Chunks API", version="1.0.0")
 router = APIRouter(prefix="/setupdb", tags=["LTI 1.3"])
 
 # Configure logging
@@ -53,186 +48,94 @@ setup_status = {
     "progress": 0.0
 }
 
-# Thread pool for running background tasks
-# executor = ThreadPoolExecutor(max_workers=1)
 
-# @router.post("/", response_model=SetupResponse)
-# async def setup_database_endpoint(
-#     request: SetupRequest,
-#     background_tasks: BackgroundTasks
-# ):
-#     """
-#     Endpoint to setup database by loading chunks and generating embeddings.
-#     This runs as a background task since it can take significant time.
-#     """
-#     global setup_status
-    
-#     # Check if setup is already in progress
-#     if setup_status["in_progress"]:
-#         raise HTTPException(
-#             status_code=409,
-#             detail="Database setup is already in progress"
-#         )
-    
-#     # Reset status
-#     setup_status = {
-#         "in_progress": True,
-#         "completed": False,
-#         "error": None,
-#         "chunks_processed": 0,
-#         "total_chunks": 0,
-#         "progress": 0.0
-#     }
-    
-#     # Run setup in background
-#     background_tasks.add_task(
-#         run_setup_background,
-#         request.chunks_file,
-#         request.project_id
-#     )
-    
-#     return JSONResponse(
-#         status_code=202,
-#         content={
-#             "status": "accepted",
-#             "message": "Database setup started in background",
-#             "chunks_file": request.chunks_file,
-#             "project_id": request.project_id
-#         }
-#     )
-
-# def run_setup_background(chunks_file: str, project_id: str):
-#     """Run the database setup in a background thread"""
-#     global setup_status
-    
-#     try:
-#         logger.info(f"Starting database setup with file: {chunks_file}")
-        
-#         # Handle file path - if it's not absolute, make it relative to the current directory
-#         if not os.path.isabs(chunks_file):
-#             chunks_file = str(CURRENT_DIR / chunks_file)
-        
-#         # Load chunks to get total count for progress tracking
-#         try:
-#             import json
-#             with open(chunks_file, 'r') as f:
-#                 chunks_data = json.load(f)
-#             setup_status["total_chunks"] = len(chunks_data)
-#             logger.info(f"Successfully loaded {len(chunks_data)} chunks from {chunks_file}")
-#         except Exception as e:
-#             logger.error(f"Error loading chunks file: {e}")
-#             setup_status["error"] = f"Error loading chunks file: {str(e)}"
-#             setup_status["in_progress"] = False
-#             return
-        
-#         # Run the actual setup (this is your existing function)
-#         success = setup_database(chunks_data)
-        
-#         if success:
-#             setup_status["completed"] = True
-#             setup_status["chunks_processed"] = setup_status["total_chunks"]
-#             setup_status["progress"] = 100.0
-#             logger.info("Database setup completed successfully")
-#         else:
-#             setup_status["error"] = "Database setup failed (check logs for details)"
-#             logger.error("Database setup failed")
-            
-#     except Exception as e:
-#         error_msg = f"Unexpected error during setup: {str(e)}"
-#         setup_status["error"] = error_msg
-#         logger.error(error_msg)
-#     finally:
-#         setup_status["in_progress"] = False
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends, HTTPException
-import asyncpg
-import json
-from app.core.config import settings
 
 
 
-async def insert_course_chunk(doc_name, module_name, content, embedding):
-    conn = await asyncpg.connect(settings.connection_url)
-
+async def insert_course_chunk(db: AsyncSession, doc_name: str, module_name: str, content: str, embedding):
+    # Convert embedding list to PostgreSQL array format
+    # embedding_array = "{" + ",".join(str(x) for x in embedding) + "}"
+    
+    # Use SQLAlchemy core for async execution with raw SQL
     embedding_str = "[" + ",".join(str(x) for x in embedding) + "]"
     
-    # Convert embedding list to array for Postgres
-    await conn.execute(
-        """
+    stmt = text("""
         INSERT INTO course_embeddings (doc_name, module_name, content, embedding)
-        VALUES ($1, $2, $3, $4)
-        """,
-        doc_name,
-        module_name,
-        content,
-        embedding_str  # asyncpg supports Postgres arrays for simple lists
-    )
+        VALUES (:doc_name, :module_name, :content, :embedding)
+    """)
+
+    params = {
+            'doc_name': doc_name,
+            'module_name': module_name,
+            'content': content,
+            'embedding': embedding_str
+            # 'context_used': json.dumps(memory_data.get('context_used')) if memory_data.get('context_used') else None
+        }
+        
+    result = await db.execute(stmt, params)
     
-    await conn.close()
+    # stmt = stmt.bindparams(
+    #     doc_name=doc_name,
+    #     module_name=module_name,
+    #     content=content,
+    #     embedding=embedding_str
+    # )
+    await db.commit()
+    
+    # await db.execute(stmt)
+    # await db.commit()
 
 @router.post("/v2", status_code=status.HTTP_201_CREATED)
 async def setup_database_endpoint(
     db: AsyncSession = Depends(get_db)
 ):
-    # Handle file path - if it's not absolute, make it relative to the current directory
-    # if not os.path.isabs('backend/app/api/course_chunks.json'):
-    #     chunks_file = str(CURRENT_DIR / 'course_chunks.json')
-    
-    # Load chunks to get total count for progress tracking
     try:
         import json
         with open('app/api/course_chunks.json', 'r') as f:
-            chunks_data = json.load(f)    
-            # print('FILE READ: ', chunks_data)
+            chunks_data = json.load(f)
+            logger.debug('FILE READ: %s', chunks_data)
         
-        repo = CourseChunkRepository(db)
-        chunks = []
+        count = 0
         for chunk_data in chunks_data:
-            print('chunk: ', chunk_data)
+            logger.debug('chunk: %s', chunk_data)
             if chunk_data['metadata']['chunk_type'] != 'content':
-                print('SKIP!')
+                logger.debug('SKIP! Non-content chunk type')
                 continue
             else:
-                doc_name=chunk_data['metadata']['item_name']
-                module_name=chunk_data['metadata']['module_name']
-                content=chunk_data['content'].replace('content:', '')
+                doc_name = chunk_data['metadata']['item_name']
+                module_name = chunk_data['metadata']['module_name']
+                content = chunk_data['content'].replace('content:', '')
 
-                print('doc_name, ', doc_name, 'module', module_name, 'content', content)
+                logger.debug('Processing - doc_name: %s, module: %s, content: %s', doc_name, module_name, content[:30])  
                 obj = await embed_course_doc(str(content), str(doc_name), str(module_name))
 
-                print('object: ', obj)
-                # chunk_datas = CourseChunkCreate(**obj)  # Convert dict → Pydantic model
-                # chunk = await repo.create(chunk_datas)
-                a = await insert_course_chunk(doc_name, module_name, content, obj['embedding'])
-                # chunk = await repo.create(obj)
-                # chunk = CourseChunk(
-                #     doc_name=obj['doc_name'],
-                #     module_name=obj['module_name'],
-                #     content=obj['content'],
-                #     embedding=obj['embedding']
-                # )
-                # ch = await repo.create(chunk)
-                print(a, 'enbedded')
+                logger.debug('Embedding object: %s', obj)
 
-        logger.info(f"✅ Loaded {len(chunks)} chunks")
+                # Pass the db session to the insert function
+                await insert_course_chunk(db, doc_name, module_name, content, obj['embedding'])
+
+                logger.info('Embedded document: %s', doc_name)
+                count += 1
+
+        logger.info(f"✅ Loaded {count} chunks")
         return {
             "status": "success",
-            "message": "Course chunk created successfully",
+            "message": f"Successfully loaded {count} course chunks",
         }
-
 
     except Exception as e:
-        print(e)
+        logger.error("Failed to setup database: %s", e, exc_info=True)
+        # Rollback in case of error
+        await db.rollback()
         return {
             "status": "failed",
-            "message": "Course chunk not created successfully",
-            # "data": chunk  # or convert to dict if needed
+            "message": "Course chunks not created successfully",
         }
-
 from typing import List, Dict
 
-from sqlalchemy import select, text
-from sqlalchemy.orm import selectinload
+from sqlalchemy import text
 
 @router.get("/course_chunks/")
 async def get_course_chunks(db: AsyncSession = Depends(get_db)):

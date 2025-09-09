@@ -534,7 +534,8 @@
                         module_position: courseContext.databaseContent.modulePosition,
                         current_position: courseContext.databaseContent.itemPosition,
                         item_title: courseContext.databaseContent.itemTitle,
-                        item_type: courseContext.databaseContent.itemType
+                        item_type: courseContext.databaseContent.itemType,
+                        yt_transcript: courseContext.databaseContent.ytTranscript || null
                     } : (moduleNavigation ? {
                         module_id: moduleNavigation.module?.id || null,
                         module_name: moduleNavigation.module?.name || null,
@@ -565,20 +566,20 @@
                 console.log('📥 AI response data:', data);
                 
                 // Handle quiz responses
-                if (data.insights && data.insights.response_type === 'quiz_question') {
-                    // Store quiz state for tracking
-                    currentQuizState = {
-                        id: data.insights.quiz_id,
-                        difficulty: data.insights.difficulty,
-                        current_question: data.insights.question_index,
-                        status: 'active'
-                    };
-                } else if (data.insights && data.insights.response_type === 'quiz_complete') {
-                    // Clear quiz state when completed
-                    currentQuizState = null;
-                }
+                // if (data.insights && data.insights.response_type === 'quiz_question') {
+                //     // Store quiz state for tracking
+                //     currentQuizState = {
+                //         id: data.insights.quiz_id,
+                //         difficulty: data.insights.difficulty,
+                //         current_question: data.insights.question_index,
+                //         status: 'active'
+                //     };
+                // } else if (data.insights && data.insights.response_type === 'quiz_complete') {
+                //     // Clear quiz state when completed
+                //     currentQuizState = null;
+                // }
                 
-                return data.reply;
+                return data;
                 
             } catch (error) {
                 console.error('❌ Error in getAIResponse:', error);

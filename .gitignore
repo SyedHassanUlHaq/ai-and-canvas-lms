@@ -18,3 +18,5 @@ htmlcov/
 **/build/ 
 elivision-ai-1-4e63af45bd31.json
 backend/elivision-ai-1-4e63af45bd31.json
+backend/fasttext.whl
+backend/lid.176.bin

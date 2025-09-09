@@ -381,8 +381,8 @@
                 
                 // Handle different response formats
                 let replyText = '';
-                if (typeof data.answer === 'string') {
-                    replyText = data.answer;
+                if (typeof data === 'string') {
+                    replyText = data;
                 } else if (data.reply && typeof data.reply === 'object') {
                     // If reply is an object, try to extract the text
                     replyText = data.reply.text || data.reply.message || data.reply.content || JSON.stringify(data.reply);

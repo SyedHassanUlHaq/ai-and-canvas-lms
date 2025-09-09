@@ -328,7 +328,7 @@ def get_ai_tutor_embed_html(lti_context: Dict[str, Any]) -> str:
     user_id = lti_context.get('user_id', 'unknown')
     
     # Use absolute URL for iframe (Canvas RCE context)
-    tool_url = "https://ai-canvas-lms-73183888096.asia-southeast2.run.app"
+    tool_url = "https://d18ca0ac30c3.ngrok-free.app"
     
     # Use static course ID 240 for database access
     database_course_id = "240"

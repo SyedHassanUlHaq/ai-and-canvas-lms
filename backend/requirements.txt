@@ -11,6 +11,8 @@ langchain-google-vertexai
 langchain-huggingface
 langchain-chroma
 
+fasttext
+
 # Vector database and embeddings
 chromadb
 sentence-transformers

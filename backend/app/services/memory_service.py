@@ -33,9 +33,9 @@ class MemoryService:
                 logger.warning("Running in production Cloud Run without database - using fallback memory")
                 self.engine = None
             else:
-                self.engine = create_engine(db_url)
-                # Create tables if they don't exist
-                Base.metadata.create_all(bind=self.engine)
+                # self.engine = create_engine(db_url)
+                # # Create tables if they don't exist
+                # Base.metadata.create_all(bind=self.engine)
                 logger.info("Memory service initialized with database connection")
                 
         except Exception as e:

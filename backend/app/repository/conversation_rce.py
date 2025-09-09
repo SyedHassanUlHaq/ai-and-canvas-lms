@@ -360,8 +360,8 @@ class ConversationMemoryRawRepository_rce:
         """Create a new conversation memory using raw SQL"""
         sql = text("""
             INSERT INTO conversations_rce
-            (user_id, course_id, module_item_id, message, message_from, session_id, summary, embedding)
-            VALUES (:user_id, :course_id, :module_item_id, :message, :message_from, :session_id, :summary, :embedding)
+            (user_id, course_id, module_item_id, message, message_from, session_id, summary, embedding, evaluation, quiz_session_id, quiz_active, current_language)
+            VALUES (:user_id, :course_id, :module_item_id, :message, :message_from, :session_id, :summary, :embedding, :evaluation, :quiz_session_id, :quiz_active, :current_language)
             RETURNING *
         """)
 
@@ -374,8 +374,11 @@ class ConversationMemoryRawRepository_rce:
             'message_from': memory_data.get('message_from', 'user'),
             'session_id': memory_data['session_id'],
             'summary': memory_data['summary'],
-            'embedding': memory_data['embedding']
-            
+            'embedding': memory_data['embedding'],
+            'evaluation': memory_data['evaluation'],
+            'quiz_session_id': memory_data['quiz_session_id'],
+            'quiz_active': memory_data['quiz_active'],
+            'current_language': memory_data['current_language']
             # 'context_used': json.dumps(memory_data.get('context_used')) if memory_data.get('context_used') else None
         }
         
@@ -435,14 +438,14 @@ class ConversationMemoryRawRepository_rce:
     async def get_by_session_id(
         self,
         session_id: str,
-        limit: int = 100,
+        limit: int = 1,
         offset: int = 0
     ) -> List[Dict[str, Any]]:
         """Get all conversation memories by session ID using raw SQL"""
         sql = text("""
             SELECT * FROM conversations_rce 
             WHERE session_id = :session_id 
-            ORDER BY timestamp ASC 
+            ORDER BY timestamp DESC 
             LIMIT :limit OFFSET :offset
         """)
         
@@ -692,3 +695,116 @@ class ConversationMemoryRawRepository_rce:
         rows = result.mappings().all()
         
         return [dict(row) for row in rows] if rows else []
+    
+    async def update_user_evaluation_and_quiz_session(
+        self, 
+        user_id: str, 
+        evaluation: str, 
+        quiz_session_id: int,
+        quiz_active: bool = False  # Add quiz_active parameter
+    ) -> Optional[Dict[str, Any]]:
+        """Update evaluation, quiz_session_id, and quiz_active for the most recent conversation of a user"""
+        sql = text("""
+            UPDATE conversations_rce 
+            SET evaluation = :evaluation, 
+                quiz_session_id = :quiz_session_id,
+                quiz_active = :quiz_active
+            WHERE id = (
+                SELECT id FROM conversations 
+                WHERE user_id = :user_id 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            )
+            RETURNING *
+        """)
+        
+        params = {
+            'user_id': user_id,
+            'evaluation': evaluation,
+            'quiz_session_id': quiz_session_id,
+            'quiz_active': quiz_active
+        }
+        
+        result = await self.session.execute(sql, params)
+        await self.session.commit()
+        row = result.mappings().first()
+        return dict(row) if row else None
+    
+    async def update_user_evaluation_and_quiz_session_by_session_id(
+        self, 
+        session_id: str, 
+        evaluation: str, 
+        quiz_session_id: int,
+        quiz_active: bool = False  # Add quiz_active parameter
+    ) -> Optional[Dict[str, Any]]:
+        """Update evaluation, quiz_session_id, and quiz_active for the most recent conversation of a user"""
+        sql = text("""
+            UPDATE conversations_rce 
+            SET evaluation = :evaluation, 
+                quiz_session_id = :quiz_session_id,
+                quiz_active = :quiz_active
+            WHERE id = (
+                SELECT id FROM conversations 
+                WHERE session_id = :session_id 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            )
+            RETURNING *
+        """)
+        
+        params = {
+            'session_id': session_id,
+            'evaluation': evaluation,
+            'quiz_session_id': quiz_session_id,
+            'quiz_active': quiz_active
+        }
+        
+        result = await self.session.execute(sql, params)
+        await self.session.commit()
+        row = result.mappings().first()
+        return dict(row) if row else None
+    
+    async def update_quiz_active_status(
+        self, 
+        session_id: str, 
+        quiz_active: bool
+    ) -> Optional[Dict[str, Any]]:
+        """Update only the quiz_active status for the most recent conversation of a user"""
+        sql = text("""
+            UPDATE conversations_rce
+            SET quiz_active = :quiz_active
+            WHERE id = (
+                SELECT id FROM conversations_rce 
+                WHERE session_id = :session_id 
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            )
+            RETURNING *
+        """)
+        
+        params = {
+            'session_id': session_id,
+            'quiz_active': quiz_active
+        }
+        
+        result = await self.session.execute(sql, params)
+        await self.session.commit()
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def get_latest_quiz_session_id(self, session_id: str) -> Optional[str]:
+        """Return the quiz_session_id of the latest record (by timestamp)
+        where there are more than 5 records with that quiz_session_id.
+        """
+        sql = text("""
+            SELECT c.quiz_session_id
+            FROM conversations_rce c
+            WHERE c.session_id = :session_id
+              AND c.evaluation = 'passed'
+            ORDER BY timestamp DESC 
+            LIMIT 1
+        """)
+        
+        result = await self.session.execute(sql, {"session_id": session_id})
+        row = result.first()
+        return row[0] if row else None

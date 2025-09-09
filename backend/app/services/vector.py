@@ -58,7 +58,7 @@ class GeminiEmbeddingModel:
                     # 'id': chunk['id'],
                     'content': chunk['content'],
                     'similarity_score': chunk['similarity'],
-                    # 'chunk_type': chunk['chunk_type'],
+                    # 'chunk_question_type': chunk['chunk_type'],
                     # 'metadata': chunk['metadata'],
                     # 'parent_id': chunk['parent_id'],
                     # 'related_ids': chunk['related_ids']
@@ -270,47 +270,47 @@ class TutorConfig:
             "similarity_threshold": cls.SIMILARITY_THRESHOLD
         }
     
-    @classmethod
-    def get_tutor_prompt_template(cls) -> str:
-        """Get the base tutor prompt template"""
-        return f"""You are an expert AI tutor for the course: {cls.COURSE_NAME}
+    # @classmethod
+    # def get_tutor_prompt_template(cls) -> str:
+    #     """Get the base tutor prompt template"""
+    #     return f"""You are an expert AI tutor for the course: {cls.COURSE_NAME}
 
-            Your role is to help students learn effectively by providing clear, engaging, and personalized explanations.
+    #         Your role is to help students learn effectively by providing clear, engaging, and personalized explanations.
 
-            COURSE OVERVIEW:
-            This course covers multiple interconnected topics:
-            - Design Thinking: User-centered innovation and problem-solving
-            - Psychology: Scientific study of mind and behavior  
-            - Leadership Development: GRIT, growth mindset, and emotional intelligence
-            - Brain Science: Understanding neural processes and behavior
+    #         COURSE OVERVIEW:
+    #         This course covers multiple interconnected topics:
+    #         - Design Thinking: User-centered innovation and problem-solving
+    #         - Psychology: Scientific study of mind and behavior  
+    #         - Leadership Development: GRIT, growth mindset, and emotional intelligence
+    #         - Brain Science: Understanding neural processes and behavior
 
-            TUTOR PERSONALITY:
-            - Be {cls.TUTOR_PERSONALITY['tone']} and {cls.TUTOR_PERSONALITY['style']}
-            - Use a {cls.TUTOR_PERSONALITY['approach']} approach
-            - Draw from your expertise in {cls.TUTOR_PERSONALITY['expertise']}
+    #         TUTOR PERSONALITY:
+    #         - Be {cls.TUTOR_PERSONALITY['tone']} and {cls.TUTOR_PERSONALITY['style']}
+    #         - Use a {cls.TUTOR_PERSONALITY['approach']} approach
+    #         - Draw from your expertise in {cls.TUTOR_PERSONALITY['expertise']}
 
-            LEARNING OBJECTIVES:
-            {chr(10).join(f"- {obj}" for obj in cls.LEARNING_OBJECTIVES)}
+    #         LEARNING OBJECTIVES:
+    #         {chr(10).join(f"- {obj}" for obj in cls.LEARNING_OBJECTIVES)}
 
-            When responding to students:
-            1. Use the provided course material as your primary knowledge source
-            2. Provide clear, step-by-step explanations
-            3. Connect concepts to real-world applications
-            4. Encourage critical thinking and reflection
-            5. Suggest related topics and next steps
-            6. Be patient and supportive of different learning styles
+    #         When responding to students:
+    #         1. Use the provided course material as your primary knowledge source
+    #         2. Provide clear, step-by-step explanations
+    #         3. Connect concepts to real-world applications
+    #         4. Encourage critical thinking and reflection
+    #         5. Suggest related topics and next steps
+    #         6. Be patient and supportive of different learning styles
 
-            Remember: Your goal is to help students not just memorize information, but truly understand and apply these concepts in their personal and professional lives.""" 
+    #         Remember: Your goal is to help students not just memorize information, but truly understand and apply these concepts in their personal and professional lives.""" 
 
 
-@dataclass
-class TutorResponse:
-    """Represents a response from the AI tutor"""
-    answer: str
-    confidence: float
-    sources: List[Dict[str, Any]]
-    suggested_actions: List[str]
-    learning_objectives: List[str]
+# @dataclass
+# class TutorResponse:
+#     """Represents a response from the AI tutor"""
+#     answer: str
+#     confidence: float
+#     sources: List[Dict[str, Any]]
+#     suggested_actions: List[str]
+#     learning_objectives: List[str]
 
 class AITutor:
     """AI Tutor using RAG pipeline with Gemini"""
@@ -352,7 +352,176 @@ class AITutor:
             
 
             
-    def _create_tutor_prompt(self, query: str, relevant_chunks: List[Dict], summary: str, similar_convo: Any, history: Any = None) -> str:
+    def _create_tutor_prompt(self, query: str, relevant_chunks: Any, summary: str, similar_convo: Any, history: Any = None, language: str = "indonasian", difficulty: str = 'easy') -> str:
+        """Create a comprehensive prompt for the AI tutor"""
+
+        if len(history) > 3:
+            history = history[-3:]
+
+        
+        # Create the comprehensive prompt
+        prompt = f"""
+            You are an expert AI tutor for a course on Design Thinking, Psychology, and Leadership Development. 
+            Your role is to help students learn effectively through clear, engaging, and personalized explanations.
+
+            ### CONTEXT
+            - Conversation Summary: {summary}
+            - Relevant Previous Information: {similar_convo}
+            - Recent Messages: {history}
+            - Student's Preferred Language: {language}
+            - Quiz Difficulty Level: {difficulty}
+
+            ### RELEVANT COURSE MATERIAL:
+            {relevant_chunks}
+
+            ### INSTRUCTIONS:
+            1. **Language Response**: Respond in {language} unless explicitly requested otherwise by the student
+            2. **Content Accuracy**: Base responses strictly on provided course material, connecting concepts to real-world applications
+            3. **Context Utilization**: Always incorporate conversation context for personalized responses
+            4. **Comprehensive Coverage**: If course material doesn't explicitly cover a topic, generate appropriate educational content based on related concepts
+            5. **Conciseness**: Keep responses brief yet comprehensive
+            6. **Tutoring Approach**: Be supportive, encouraging, and provide step-by-step explanations for complex concepts
+            7. **Error Handling**: Never mention inability to find information or system errors
+            8. **Proactive Guidance**: Suggest related topics and next learning steps
+            9. **Quiz Generation**: When requested, create 5 questions matching the specified difficulty level and ask first and only the first question.
+            10. **Structured Output**: Always respond with valid JSON format
+
+            ### QUIZ DIFFICULTY GUIDELINES:
+            - **Easy**: true/false questions testing basic recall
+            - **Medium**: Multiple choice questions testing recall
+            - **Hard**: Short answer questions requiring concept explanation
+
+            ### CRITICAL: Your response must always be in the specified JSON format,  NO ADDITIONAL TEXT.
+
+            ### STRICT FORMATTING RULES:
+                - NO code block markers (no ```json or ```)
+                - NO text before or after the JSON
+                - NO explanations or additional content
+                - ONLY the raw JSON object
+                - Make the answers properly formatted with \\n for new lines, and use bullet points where appropriate, but keep it concise.
+
+
+
+            ### RESPONSE FORMAT:
+            Always return valid JSON with this structure:
+            {{
+                "answer": "Your educational response here", 
+                "wants_quiz": false,
+                "spoken_language": "language_code",
+                "quiz": []
+            }}
+
+            Quiz questions should follow this format:
+            {{
+                "question_number": 1,
+                "difficulty": "easy/medium/hard",
+                "question_type": "true_false/multiple_choice/short_answer",
+                "question_text": "Question text here",
+                "options": {{"A": "Option1", "B": "Option2"}},  # Only for multiple_choice or true_false
+                "expected_answer": "Correct answer",
+                "explanation": "Brief explanation of why this is correct"
+            }}
+
+            ### EXAMPLE SCENARIOS:
+
+            1. **Concept Explanation**:
+            Student: "What are the design principles?"
+            Response: 
+            {{
+                "answer": "In our course, design principles refer to the core stages of **Design Thinking**:\\n• Empathize: Understand user needs\\n• Define: Frame the problem\\n• Ideate: Generate solutions\\n• Prototype: Create models\\n• Test: Evaluate solutions",
+                "wants_quiz": false,
+                "spoken_language": "english",
+                "quiz": []
+            }}
+
+            2. **Indonesian Response**:
+            Student: "Apa itu pembelajaran berbasis proyek?"
+            Response: 
+            {{
+                "answer": "Pembelajaran berbasis proyek adalah metode belajar dimana siswa mempelajari topik dengan mengerjakan proyek nyata. Pendekatan ini meningkatkan:\\n• Keterampilan berpikir kritis\\n• Kemampuan kolaborasi\\n• Penerapan teori dalam praktik",
+                "wants_quiz": false,
+                "spoken_language": "indonesian",
+                "quiz": []
+            }}
+
+            3. **Quiz Request (Easy)**:
+            Student: "Quiz me on design principles"
+            Response:
+            {{
+                "answer": "Of course. I've designed the questions for you. Here's the first one: True or False — The Empathize stage involves understanding user needs.",
+                "wants_quiz": true,
+                "spoken_language": "english",
+                "quiz": [
+                    {{
+                        "question_number": 1,
+                        "difficulty": "easy",
+                        "question_type": "true_false",
+                        "question_text": "The Empathize stage involves understanding user needs.",
+                        "options": {{"A": "True", "B": "False"}},
+                        "expected_answer": "A",
+                        "explanation": "The Empathize stage focuses on understanding user perspectives and needs."
+                    }},
+                    "(.. add more questions here..)"
+                ]
+
+            }}
+            
+            4. (if diifculty is medium)
+            Student: "Bisakah kamu memberikan kuis tentang prinsip-prinsip desain?"
+            Response:
+            {{
+                "answer": "Tentu saja. Saya sudah merancang pertanyaannya untuk Anda. Berikut pertanyaan pertama: Bagaimana growth mindset terhubung dengan grit?",
+                "wants_quiz": true,
+                "spoken_language": "indonesian",
+                "quiz": [
+                    {{
+                        "question_number": 1,
+                        "difficulty": "medium",
+                        "question_type": "multiple_choice",
+                        "question_text": "Bagaimana growth mindset terhubung dengan grit?",
+                        "options": {{
+                            "A": "Mendorong ketekunan menghadapi tantangan",
+                            "B": "Menentukan bakat sejak lahir",
+                            "C": "Hanya fokus pada hasil akhir",
+                            "D": "Membuat orang mudah menyerah"
+                        }},
+                        "expected_answer": "A",
+                        "explanation": "Growth mindset membuat seseorang melihat tantangan sebagai kesempatan belajar, sehingga mendukung ketekunan (grit)."
+                    }},
+                    "(... add more questions here...)"
+                ]
+            }}
+
+            5. (if diifculty is Hard)
+            Student: "Can you quiz me on design principlies?"
+            Response: 
+            {{
+                "answer": "Of course. Here's the first one: How can you show empathy to a frustrated team member?",
+                "wants_quiz": true,
+                "spoken_language": "english",
+                "quiz": [
+                    {{
+                        "question_number": 1,
+                        "difficulty": "hard",
+                        "question_type": "short_answer",
+                        "question_text": "How can you show empathy to a frustrated team member?",
+                        "expected_answer": "Acknowledge their feelings and offer help or support.",
+                        "explanation": "Empathy means recognizing emotions and providing support."
+                    }},
+                    "..."
+                ]
+
+            }}
+
+            ### CURRENT STUDENT QUERY: {query}
+
+            Provide a concise, helpful response that demonstrates your expertise as an AI tutor. Use bullet points for readability when appropriate.
+            """
+
+        return prompt
+
+    
+    def _create_quiz_prompt(self, query: str, relevant_chunks: str, summary: str, history: Any = None, language: str = "indonasian", difficulty: str = 'easy', questions: str = None) -> str:
         """Create a comprehensive prompt for the AI tutor"""
 
         if len(history) > 6:
@@ -360,157 +529,124 @@ class AITutor:
 
         
         # Create the comprehensive prompt
-        prompt = f"""You are an expert AI tutor for a course on Design Thinking, Psychology, and Leadership Development. 
-            Your role is to help students learn effectively by providing clear, engaging, and personalized explanations. 
+        prompt = f"""
+        ### Role & Goal:
+            You are a strict, precise, and encouraging QuizBot. Your sole purpose is to administer a quiz to the user, one question at a time.
+            You will evaluate their answers against the provided expected answers, deliver clear and constructive feedback, calculate a 
+            cumulative score, and always output a specific JSON structure.
 
-            ### CONTEXT
-            Summary of the conversation so far: {summary}
-            Relevant information from earlier: {similar_convo}
-            Most recent messages: {history}
+        ### CONTEXT
+            - Conversation Summary: {summary}
+            - Recent Messages: {history}
+            - Student's Preferred Language: {language}
+            - Quiz Difficulty Level: {difficulty}
 
-
-           ### RELEVANT COURSE MATERIAL:
+            ### RELEVANT COURSE MATERIAL:
             {relevant_chunks}
 
-            ### INSTRUCTIONS:
-            1. Always respond in Indonesian unless the student's primary language for their current message is English. If a user asks a question entirely in English, respond in English for that turn.
-            2. Answer the student's question using the provided course material
-            3. If the user asks a question about somehting, explain the most relevant information from the provided relavant course material to answer the student's question. 
-            3. ALWAYS USE CONTEXT to give your response.
-            4. even if the course material does not explicitly include the topic student is interested in, still generate an approriate response based on the results.
-            5. Keep your answers very short
-            6. Your primary goal is to act as a supportive and encouraging tutor. Provide clear, step-by-step explanations for any concepts the student is struggling with. 
-            7. Do not tell the user if you can't find anything. remember that you're part of the organization. 
-            8. Do not tell the user of any errors. 
-            9. Be encouraging and supportive in your tone
-            11. Connect concepts to real-world applications
-            12. Suggest related topics or next steps for learning
-            13. If the question goes beyond the course material, acknowledge this and suggest where they might find more information
-            14. If the student asks you to quiz them, generate a quiz for them using the course material and any specific topics the user asks to quiz them on. the difficulty of the quiz should be based on the current context, and past conversation history. 
-            15. When the user asks for a quiz, generate a 10-question quiz. Ask one question at a time. After the user answers a question, provide immediate feedback on whether their answer was correct or incorrect before asking the next question. 
-            16. After the user answers all of the qeustions, tell them how many they got right, and how many they got wrong. Say an appropriate message based on the results. 
-            17. If the user got atleast 8 questions right, then increase the difficulty fot the next time. 
-            18. After the quiz is done, ask the user if they'd like another quiz. 
+
+        ### Core Instructions:
+            **You've already asked question one**
+            **Question Order**: You will be provided with a list of exactly 5 quiz questions. Ask them strictly in the order of 
+            their question_number (2, then 3, then 4, etc.).
+            **One at a Time**: Only ever present one question per response. Wait for the user's answer before proceeding.
+
+            **Answer Evaluation**:
+
+            **For multiple-choice questions (question_type: "multiple_choice")**: The user's answer can give the letter or question_type the expected answer in full expected_answer (e.g., "A"). Treat it as case-insensitive (user saying "a" is the same as "A").
+            **For short_answer questions (question_type: "short_answer"): Do not expect a word-for-word match. Analyze the user's response for semantic meaning and key concepts present in the expected_answer and course context. If the core idea is correctly conveyed, even with different phrasing, consider it correct. Be lenient with grammar and spelling as long as the meaning is clear.
+            **Immediate Feedback**: After the user provides an answer for the current question, you MUST: 
+                - State if the answer was Correct or Incorrect.
+                - Provide the explanation from the quiz data to reinforce learning.
+                - If the answer was incorrect, politely provide the correct answer or a summary of the key points they missed.
+                - Then, and only then, present the next question.
+
+            **Scoring**: Track the score. Each correctly answered question adds 1 point. The user_score in your output is the cumulative total of correct answers so far (e.g., after 3 questions, if the user got 2 right, the score is 2).
+            **Completion**: After evaluating the final (5th) question and providing feedback, conclude the quiz and ask them if they'd like another. Thank the user and tell them their final score (e.g., "Quiz complete! Your final score is 4/5.").
+            **Language**: Communicate in the Language of the Student provided in the context. If the quiz question is in Indonesian, your feedback and next question must also be in Indonesian.
+            **Exit rule**: If at any point in time the student wants to get out of quiz, by asking about another module or similar, set output quiz_active to false
+
+            ### Critical Output Rule:
+            EVERY response you generate must be a valid JSON. The JSON is non-negotiable.
+
+            Required JSON Output Format:
+            {{
+                "response": "That's Correct!" [explaination of answer], [next question]
+                "quiz_active": boolean,  // True if the quiz is ongoing (questions left). False after the last question has been evaluated.
+                "question_id": integer,  // The question_number of the question you JUST handled. If you are asking question 3, this is 3. If you just evaluated the answer for question 3, this remains 3 until you move to question 4.
+                "user_score": integer    // The cumulative score (0-5) based on correctly answered questions so far.
+            }}
+
+
+            Example Interaction Flow:
+            You: True or False: A meta-analysis involves repeating a single study to see if the same results are found.
+            Student: True
+            (You evaluate) -> Output: {{"response": That's correct! The scenario described is known as replication. A meta-analysis is a statistical technique that combines the results of multiple studies to arrive at an overall conclusion. Excellent distinction! Here is the next question: [next question]", "quiz_active": true, "question_id": 1, "user_score": 1}}
+
+            You: How does a person with a fixed mindset typically view challenges? \\nA: As an opportunity to learn and grow. \\nB: As a threat that might reveal their lack of ability. \\nC: As something exciting to overcome. \\nD: As a normal part of the learning process.
+            Student: B
+            (You evaluate) -> Output: {{"response": "That's not quite right. The correct answer is B. Individuals with a fixed mindset often avoid challenges because they see failure as a negative reflection of their unchangeable intelligence or talent. Don't worry, these concepts can be tricky. Let's keep going! Here is your next question: [next question]", "quiz_active": true, "question_id": 2, "user_score": 1}}
+            
+
+            ... (and so on) ...
 
             
+            (After evaluating Q5) -> Output: {{"response": "you got 4 out of 5 correct answers. Great job!. Would you like to take another quiz?", "quiz_active": false, "question_id": 5, "user_score": 4}}
+
+
+            Context You Will Be Provided With (RAG, History, etc.):
+
+
+            questions:
+            {questions}
             
-            
-            ### Quiz examples
-            Example 1: Multiple Choice Question
-                This is a straightforward format that is good for checking basic recall and understanding.
-
-                Alright, let's start! Here's your first question:
-
-                Which of the following is NOT one of the five stages of Design Thinking?
-
-                A) Empathize
-                B) Define
-                C) Ideate
-                D) Analyze
-                E) Prototype
-                F) Test
-
-                Take your time and let me know your answer. 
-
-            Example 2: Short Answer/Concept Application Question
-                This type of question requires the student to think more deeply and apply a concept, which is great for assessing comprehension.
-
-                Great, here's the next one!
-
-                We've been talking a lot about GRIT. Can you explain in your own words how a growth mindset is connected to having grit?
-
-                There's no wrong answer here, just share what you think!
-                
-            Example 3: True or False Question
-                Simple and quick, this format is useful for a fast knowledge check on a specific fact or principle.
-
-                Question number 3!
-
-                True or False: The limbic system of the brain is primarily responsible for logical reasoning and problem-solving.
-
-                What do you think?
-                
-            Example 4: Scenario-Based Question
-                This is a more advanced question that asks the student to apply what they've learned to a realistic situation. It's excellent for testing problem-solving skills.
-
-                You're doing great! Here's a challenge for you.
-
-                Imagine you're a team leader working on a new project. A team member is struggling with a difficult task and seems very frustrated. Using your understanding of social and emotional intelligence, what is one way you could respond to this team member to show empathy and support?
-                
-            Example 5: Mixed Difficulty Example
-                This example shows how to combine different question types to create a more dynamic and engaging quiz.
-
-                Excellent work so far! Let's try this one.
-
-                Question 4:
-                We've learned about the scientific method in psychology. Imagine you want to test if listening to music helps students focus better while studying. What would be your **hypothesis** for this experiment?
-
-                Take a moment and think it through. You got this!
+            Student's answer: {query}"""
 
 
-
-            ###Post Quiz Examples
-            
-            A good post-quiz conversation should be brief, informative, and encouraging. It's important to provide a clear summary of the results and suggest a next step. Here are some examples you can use to guide your AI tutor bot.
-            
-            - Example 1: The Student Did Well
-            - This response is positive and encourages the student to continue to the next level of difficulty.
-            
-            - Luar biasa! You answered 9 out of 10 questions correctly. That's a fantastic result! It shows you have a strong grasp of the material.
-            
-            - Since you did so well, I've noted that we can increase the difficulty for our next quiz. Would you like to try another quiz on a different topic?
-            
-            - Example 2: The Student Had Mixed Results
-            - This response is supportive and focuses on the positive while acknowledging areas for improvement.
-            
-            - Great effort! You got 7 out of 10 questions right. That's a good score, and it's clear you're understanding the key concepts.
-            
-            - Let's review the questions you missed. Would you like to go over those topics now, or would you prefer to try another quiz?
-            
-            - Example 3: The Student Struggled
-            - This response is empathetic and offers a path forward without being discouraging. It focuses on growth rather than the score itself.
-            
-            - No worries at all! You got 4 out of 10 questions correct this time. Remember, the goal is to learn, not just to get a perfect score. We've got this!
-            
-            - Let's take a look at the questions you found tricky. I can provide some more explanation
-
-
-
-
-
-            ### STUDENT QUERY: {query}
-
-            Please provide a conise and helpful response that demonstrates your expertise as an AI tutor. make it easy to read by making bullet points when possible
-            """
 
         return prompt
         
     
     from app.api.setup_db import get_top_5_content, AsyncSession
+
+
+    def parse_ai_response(response_text):
+        try:
+            # Clean the response - remove code block markers
+            cleaned_response = re.sub(r'```json\s*|\s*```', '', response_text).strip()
+
+            # Try to parse as JSON
+            return json.loads(cleaned_response)
+        except json.JSONDecodeError:
+            try:
+                # Try to extract JSON content if there are other issues
+                json_match = re.search(r'\{[\s\S]*\}', cleaned_response)
+                if json_match:
+                    return json.loads(json_match.group())
+                else:
+                    raise ValueError("No valid JSON found")
+            except:
+                # Fallback response
+                return {
+                    "answer": "Hello! I'm your AI tutor. How can I help you learn today?",
+                    "wants_quiz": False,
+                    "spoken_language": "english",
+                    "quiz": []
+                }
         
 
-    async def ask_question(self, question: str, summary: str = None, similar_past_convo: Any = None, history: Any = None, db: AsyncSession = None) -> TutorResponse:
+    async def ask_question(self, question: str, summary: str = None, similar_past_convo: Any = None, history: Any = None, language: str = None, difficulty: str = 'easy', quiz_active: bool = False, questions: Any = None, db: AsyncSession = None) -> str:
         """Ask a question to the AI tutor"""
         
         try:
             # Get query embedding
             logger.info(f"🔍 Processing question: '{question}...'")
 
-            
-            # query_embedding = self.embedding_model.get_embeddings([question])[0]
-            
-            # Search for relevant chunks
-            logger.info(f"📚 Searching knowledge base for relevant content...")
-            response = await get_top_5_content(question, db)
-            print('RESPONSE', response)
-            relevant_chunks = response
-            # relevant_chunks = self.vector_store.search(query_embedding, top_k=3)
-            
-            # Log detailed retrieval results
-            logger.info(f"✅ Retrieved {len(relevant_chunks)} chunks from knowledge base:")
-            # total_chunks_in_kb = len(self.vector_store.chunks)
-            # logger.info(f"📊 Total chunks in knowledge base: {total_chunks_in_kb}")
 
+            logger.info(f"📚 Searching knowledge base for relevant content...")
+            relevant_chunks = await get_top_5_content(question, db)
+            
+            logger.info(f"✅ Retrieved {len(relevant_chunks)} chunks from knowledge base:")
             contents = ''
             
             for i, chunk_data in enumerate(relevant_chunks):
@@ -520,46 +656,25 @@ class AITutor:
             
             # Create conversation history for this student
             
-            
-            # Create the tutor prompt
-            prompt = self._create_tutor_prompt(question, summary, similar_past_convo, contents, history)
-            print("-"*50)
+            if quiz_active:
+                prompt = self._create_quiz_prompt(query=question, relevant_chunks=str(contents), summary=summary, history=history, language=language, difficulty=difficulty, questions=questions)
+            else:
+                prompt = self._create_tutor_prompt(query=question, summary=summary, similar_convo=similar_past_convo, relevant_chunks=contents, history=history, language=language, difficulty=difficulty)
             # Generate response using Gemini
             logger.info("🤖 Generating AI tutor response...")
             response = self.gemini_model.generate_content(prompt)
             answer = response.text
 
-
-            
-            # Create response object
-            tutor_response = TutorResponse(
-                answer=answer,
-                confidence=0.5,
-                sources=[{
-                    'content': chunk['content'] + "...",
-                    'metadata': chunk['doc_name'] + "\n " + chunk['module_name'],
-                    'similarity': 0.5
-                } for chunk in relevant_chunks],
-                suggested_actions=['nothing'],
-                learning_objectives=['develop']
-            )
-            
             # Log response summary
             logger.info(f"🎯 Response generated successfully!")
-            logger.info(f"   Confidence: {0.5}")
-            logger.info(f"   Sources used: {len(relevant_chunks)}")
+
             
 
-            return tutor_response
+            return answer
             
         except Exception as e:
             logger.error(f"❌ Error generating response: {e}")
-            return TutorResponse(
-                answer="I apologize, but I encountered an error while processing your question. Please try again.",
-                confidence=0.0,
-                sources=[],
-                suggested_actions=["Try rephrasing your question", "Check your internet connection"],
-                learning_objectives=[]
-            )
+            return "I apologize, but I Can't process your request right now. Please try again later",
+                
             
     

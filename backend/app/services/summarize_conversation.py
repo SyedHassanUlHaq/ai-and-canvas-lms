@@ -78,6 +78,8 @@ class ConvoSummerizer:
 
         the user can speak in either english or indonasian. 
 
+        You will always include the module, topic, or course of the conversation in the summary when possible. 
+
         You will include in every summary the language user speaks as well in a clear fashion. 
 
         keep in mind that the summary wil be fed to another ai assisstant. make it accordingly
@@ -92,7 +94,7 @@ class ConvoSummerizer:
     from app.api.setup_db import AsyncSession
         
 
-    async def summerize(self, user_id, query: str, response: Any, summary: str, session_id: str, repo: Any) -> str:
+    async def summerize(self, user_id, query: str, response: Any, summary: str, session_id: str, evaluation: str, quiz_session_id: int, quiz_active: bool, current_language: str, repo: Any) -> str:
         """Ask a question to the AI tutor"""
         print('500')
         try:
@@ -126,7 +128,11 @@ class ConvoSummerizer:
                 'message_from': 'ai',
                 'session_id': session_id,
                 'summary': summary,
-                'embedding': embedding_str
+                'embedding': embedding_str,
+                'evaluation': evaluation,
+                'quiz_session_id': quiz_session_id,
+                'quiz_active': quiz_active,
+                'current_language': current_language
             }
 
             rec = await repo.create(params)

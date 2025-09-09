@@ -6,7 +6,7 @@ import json
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, HTTPException, Form, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from app.services.lti_service import lti_service
@@ -700,38 +700,38 @@ async def delete_lti_session(session_token: str):
         logger.error(f"Error deleting LTI session: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete session")
 
-@router.post("/chat")
-async def lti_chat(
-    request: Request,
-    message: str = Form(..., description="User message"),
-    session_token: str = Form(..., description="LTI session token")
-):
-    """Chat endpoint for LTI users"""
-    try:
-        # Get LTI session
-        session_data = memory_service.get_lti_session(session_token)
+# @router.post("/chat")
+# async def lti_chat(
+#     request: Request,
+#     message: str = Form(..., description="User message"),
+#     session_token: str = Form(..., description="LTI session token")
+# ):
+#     """Chat endpoint for LTI users"""
+#     try:
+#         # Get LTI session
+#         session_data = memory_service.get_lti_session(session_token)
         
-        if not session_data:
-            raise HTTPException(status_code=401, detail="Invalid session")
+#         if not session_data:
+#             raise HTTPException(status_code=401, detail="Invalid session")
         
-        # Create chat request
-        chat_request = {
-            "message": message,
-            "user_id": session_data["user_id"],
-            "course_id": session_data["course_id"],
-            "language": "en"  # Default language, can be made configurable
-        }
+#         # Create chat request
+#         chat_request = {
+#             "message": message,
+#             "user_id": session_data["user_id"],
+#             "course_id": session_data["course_id"],
+#             "language": "en"  # Default language, can be made configurable
+#         }
         
-        # Generate AI response
-        response = ai_service.generate_response(chat_request)
+#         # Generate AI response
+#         response = ai_service.generate_response(chat_request)
         
-        return {"response": response}
+#         return {"response": response}
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in LTI chat: {e}")
-        raise HTTPException(status_code=500, detail="Chat failed")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error in LTI chat: {e}")
+#         raise HTTPException(status_code=500, detail="Chat failed")
 
 @router.get("/health")
 async def lti_health():
@@ -879,113 +879,119 @@ async def platform_storage_get(
         logger.error(f"Platform storage GET error: {e}")
         raise HTTPException(status_code=500, detail="Platform storage operation failed") 
 
-@router.get("/course/progress/{session_token}")
-async def get_course_progress(
-    request: Request,
-    session_token: str
-):
-    """Get course progress and module completion for LTI user"""
-    try:
-        logger.info(f"Course progress request for session: {session_token}")
+# @router.get("/course/progress/{session_token}")
+# async def get_course_progress(
+#     request: Request,
+#     session_token: str
+# ):
+#     """Get course progress and module completion for LTI user"""
+#     try:
+#         logger.info(f"Course progress request for session: {session_token}")
         
-        # Verify session
-        session_data = memory_service.get_lti_session(session_token)
-        logger.info(f"Session data retrieved: {session_data is not None}")
+#         # Verify session
+#         session_data = memory_service.get_lti_session(session_token)
+#         logger.info(f"Session data retrieved: {session_data is not None}")
         
-        if not session_data:
-            logger.error(f"No session found for token: {session_token}")
-            raise HTTPException(status_code=401, detail="Invalid session")
+#         if not session_data:
+#             logger.error(f"No session found for token: {session_token}")
+#             raise HTTPException(status_code=401, detail="Invalid session")
         
-        # Get course summary using LTI AI service
-        logger.info(f"Getting course summary for user: {session_data['user_id']}, course: {session_data['course_id']}")
+#         # Get course summary using LTI AI service
+#         logger.info(f"Getting course summary for user: {session_data['user_id']}, course: {session_data['course_id']}")
         
-        course_summary = lti_ai_service.get_course_summary(
-            user_id=session_data["user_id"],
-            course_id=session_data["course_id"],
-            lti_context=session_data
-        )
+#         course_summary = lti_ai_service.get_course_summary(
+#             user_id=session_data["user_id"],
+#             course_id=session_data["course_id"],
+#             lti_context=session_data
+#         )
         
-        logger.info(f"Course summary retrieved: {course_summary is not None}")
-        if course_summary:
-            logger.info(f"Course summary keys: {list(course_summary.keys())}")
+#         logger.info(f"Course summary retrieved: {course_summary is not None}")
+#         if course_summary:
+#             logger.info(f"Course summary keys: {list(course_summary.keys())}")
         
-        if "error" in course_summary:
-            logger.error(f"Course summary error: {course_summary['error']}")
-            raise HTTPException(status_code=500, detail=course_summary["error"])
+#         if "error" in course_summary:
+#             logger.error(f"Course summary error: {course_summary['error']}")
+#             raise HTTPException(status_code=500, detail=course_summary["error"])
         
-        return course_summary
+#         return course_summary
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting course progress: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get course progress")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error getting course progress: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to get course progress")
 
 from app.api.setup_db import get_top_5_content
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends, HTTPException
 from app.core.dependancies import get_db
 
-@router.post("/course/chat")
-async def lti_course_chat(
-    request: Request,
-    message: str = Form(..., description="User message"),
-    session_token: str = Form(..., description="LTI session token"),
-    language: str = Form("en", description="Language preference"),
-    db: AsyncSession = Depends(get_db)
-):
-    """LTI course chat with Canvas progress context"""
-    try:
+# @router.post("/course/chat")
+# async def lti_course_chat(
+#     request: Request,
+#     message: str = Form(..., description="User message"),
+#     session_token: str = Form(..., description="LTI session token"),
+#     language: str = Form("en", description="Language preference"),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """LTI course chat with Canvas progress context"""
+#     try:
 
-        response = get_top_5_content(message, db)
-        context = response['results']
-        # Verify session
-        logger.info(f"Course chat request for session: {session_token}")
-        session_data = memory_service.get_lti_session(session_token)
-        logger.info(f"Session data retrieved: {session_data is not None}")
+#         response = get_top_5_content(message, db)
+#         context = response['results']
+#         # Verify session
+#         logger.info(f"Course chat request for session: {session_token}")
+#         session_data = memory_service.get_lti_session(session_token)
+#         logger.info(f"Session data retrieved: {session_data is not None}")
         
-        if not session_data:
-            logger.error(f"No session found for token: {session_token}")
-            raise HTTPException(status_code=401, detail="Invalid session")
+#         if not session_data:
+#             logger.error(f"No session found for token: {session_token}")
+#             raise HTTPException(status_code=401, detail="Invalid session")
         
-        # Generate contextual AI response with Canvas progress
-        logger.info(f"Generating AI response for message: {message[:50]}...")
-        response = lti_ai_service.generate_contextual_response(
-            message=message,
-            user_id=session_data["user_id"],
-            course_id=session_data["course_id"],
-            lti_context=response,
-            language=language
-        )
+#         # Generate contextual AI response with Canvas progress
+#         logger.info(f"Generating AI response for message: {message[:50]}...")
+#         response = lti_ai_service.generate_contextual_response(
+#             message=message,
+#             user_id=session_data["user_id"],
+#             course_id=session_data["course_id"],
+#             lti_context=response,
+#             language=language
+#         )
         
-        logger.info(f"AI response generated: {response is not None}")
-        if response:
-            logger.info(f"Response keys: {list(response.keys())}")
+#         logger.info(f"AI response generated: {response is not None}")
+#         if response:
+#             logger.info(f"Response keys: {list(response.keys())}")
         
-        return response
+#         return response
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in LTI course chat: {e}")
-        raise HTTPException(status_code=500, detail="Course chat failed")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error in LTI course chat: {e}")
+#         raise HTTPException(status_code=500, detail="Course chat failed")
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple
 from sentence_transformers import SentenceTransformer
 from app.services.summarize_conversation import summary_creator
 from fastapi import BackgroundTasks
+from app.services.quiz_services import *
+from app.repository.quiz_questions import QuizQuestionsRepository
+from app.repository.quiz_session import QuizSessionRepository
+from app.services.helpers import detect_language
+import json
+import re
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-@dataclass
-class TutorResponse:
-    """Represents a response from the AI tutor"""
-    answer: str
-    confidence: float
-    sources: List[Dict[str, Any]]
-    suggested_actions: List[str]
-    learning_objectives: List[str]
+# @dataclass
+# class TutorResponse:
+#     """Represents a response from the AI tutor"""
+#     answer: str
+#     confidence: float
+#     sources: List[Dict[str, Any]]
+#     suggested_actions: List[str]
+#     learning_objectives: List[str]
 
 @router.post("/course/chatv2")
 async def lti_course_chat(
@@ -998,20 +1004,36 @@ async def lti_course_chat(
 ):
     """LTI course chat with Canvas progress context"""
     try:
+        print('hello world')
 
         tutor = AITutor()
 
+        current_language = detect_language(message)
+        
+        session_repo = SessionRepository(db)
+        conversation_repo = ConversationMemoryRawRepository(db)
+        quiz_questions_repo = QuizQuestionsRepository(db)
+        
 
-        repo = SessionRepository(db)
-        repo2 = ConversationMemoryRawRepository(db)
+
+
         print(1)
-        user_id = await repo.get_user_id_by_session_id(session_token)
+        user_id = await session_repo.get_user_id_by_session_id(session_token)
         print(2)
-        user_record = await repo2.get_user_by_id(user_id)
+        user_record = await conversation_repo.get_user_by_id(user_id)
+        latest_quiz_session_id = await conversation_repo.get_latest_quiz_session_id(user_record['session_id'])
+        logging.info(f"Latest quiz session ID for user {user_id}: {latest_quiz_session_id}")
+        # if rec:
+        #     latest_quiz_session_id = rec['quiz_session_id']
+        # else:
+        #     latest_quiz_session_id = None
+        # current_language = user_record['current_language']
+        is_quiz_active = user_record['quiz_active']
+
+        quiz_difficulty = await get_difficulty_by_quiz_session_id(latest_quiz_session_id, quiz_questions_repo)
+        logging.info(f"Quiz difficulty for user {user_id}: {quiz_difficulty}")
         print(user_record)
-        history = await repo2.format_conversations_for_chatbot(user_record['session_id'])
-        
-        
+        history = await conversation_repo.format_conversations_for_chatbot(user_record['session_id'])
 
         # Initialize embedding model
         
@@ -1020,17 +1042,20 @@ async def lti_course_chat(
 
         params = {
             'user_id': user_id,
-            'course_id': None,
+            'course_id': user_record['course_id'],
             'module_item_id': None,
             'message': message,
             'message_from': 'user',
             'session_id': user_record['session_id'],
             'summary': None,
-            'embedding': embedding_str
-            # 'context_used': json.dumps(memory_data.get('context_used')) if memory_data.get('context_used') else None
+            'embedding': embedding_str,
+            'evaluation': user_record['evaluation'],
+            'quiz_session_id': user_record['quiz_session_id'],
+            'quiz_active': user_record['quiz_active'],
+            'current_language': current_language            # 'context_used': json.dumps(memory_data.get('context_used')) if memory_data.get('context_used') else None
         }
 
-        rec = await repo2.create(params)
+        rec = await conversation_repo.create(params)
 
         logger.info('question added in conversation: ', rec)
 
@@ -1044,49 +1069,120 @@ async def lti_course_chat(
             raise HTTPException(status_code=401, detail="Invalid session")
         
         # Generate contextual AI response with Canvas progress
-        previous_summary = await repo2.get_latest_summary(user_id)
-        similar_convo = await repo2.find_similar_conversations(user_id, embedding_str)
+        previous_summary = await conversation_repo.get_latest_summary(user_id)
 
+        if is_quiz_active:
+            logger.info(f"Quiz State Active for user: {user_id}")
+
+
+            logger.info(f"Retrieving Questions for session_id: {user_record['quiz_session_id']}")
+
+            questions = await quiz_questions_repo.get_questions_by_session_id(user_record['quiz_session_id'])
+
+            logger.info(f"Retrieved Questions: {questions}")
+
+            logger.info(f"Generating AI response for quiz state: {message[:50]}...")
+            response = await tutor.ask_question(
+                question=message,
+                history=history,
+                summary=previous_summary,
+                similar_past_convo=None,
+                language=current_language,
+                difficulty=quiz_difficulty,
+                quiz_active=True,
+                questions=questions,
+                db=db
+            )
+
+            try:
+                cleaned_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+                response_data = json.loads(cleaned_response)
+            except Exception as e:
+                logger.error(f"Error parsing AI response: {e}")
+                raise HTTPException(status_code=500, detail="Error parsing AI response")
+
+            
+            answer = response_data.get('response')
+            quiz_active = response_data.get('quiz_active')
+            if quiz_active:
+                logger.info(f"Ongoing quiz question: {response_data.get('question_id')}...")
+                background_tasks.add_task(summary_creator.summerize, user_id, message, answer, previous_summary, user_record['session_id'], 'Progress', user_record['quiz_session_id'], True, current_language, conversation_repo)
+            else:
+                logger.info(f"Quiz finished for user {user_id}")
+                if response_data.get('user_score') > 3:
+                    # await conversation_repo.update_user_evaluation_and_quiz_session(user_id, 'passed', user_record['quiz_session_id'], False)
+                    background_tasks.add_task(summary_creator.summerize, user_id, message, answer, previous_summary, user_record['session_id'], 'passed', user_record['quiz_session_id'], False, current_language, conversation_repo)
+                    logger.info(f"Updated User's evaluation as passed")
+                else:
+                    await conversation_repo.update_user_evaluation_and_quiz_session(user_id, 'failed', user_record['quiz_session_id'], False)
+                    background_tasks.add_task(summary_creator.summerize, user_id, message, answer, previous_summary, user_record['session_id'], 'failed', user_record['quiz_session_id'], False, current_language, conversation_repo)
+                    logger.info(f"Updated User's evaluation as falsed")
+                
+            return answer
+
+
+        similar_convo = await conversation_repo.find_similar_conversations(user_id, embedding_str)
         logger.info(f"Generating AI response for message: {message[:50]}...")
         response = await tutor.ask_question(
             question=message,
             history=history,
             summary=previous_summary,
             similar_past_convo=similar_convo,
+            language=current_language,
+            difficulty=quiz_difficulty,
+            quiz_active=False,
+            questions=[],
             db=db
         )
         
-        logger.info(f"AI response generated: {response is not None}")
+        logger.info(f"AI response generated: {response}")
+        print(response)
 
-        background_tasks.add_task(summary_creator.summerize, user_id, message, response.answer, previous_summary, user_record['session_id'], repo2)
+        try:
+            cleaned_response = re.sub(r'```json\s*|\s*```', '', response).strip()
+            response_data = json.loads(cleaned_response)
+        except Exception as e:
+            logger.error(f"Error parsing AI response: {e}")
+            raise HTTPException(status_code=500, detail="Error parsing AI response")
+
+        logger.info(f"Response data: {(response_data)}")
         
-        # summary = summary_creator.summerize(message, response.answer, previous_summary)
+        # Extract the main components
+        answer = response_data.get("answer")
+        wants_quiz = response_data.get("wants_quiz")
+        # spoken_language = response_data.get("spoken_language")
+        # quiz_questions = response_data.get("quiz")
+        quiz_session_id = None
+
+        if wants_quiz == True:
+            quiz_questions = response_data.get("quiz")
+            quiz_session_repo = QuizSessionRepository(db)
+            quiz_session_id = await quiz_session_repo.create_quiz_session()
+            quiz_session_id = quiz_session_id['id']
+            logger.info(f"User {user_id} wants to start a quiz with {len(quiz_questions)} questions. Quiz Session ID: {quiz_session_id}")
+            await conversation_repo.update_quiz_active_status(user_id, True)
+            await conversation_repo.update_user_evaluation_and_quiz_session(user_id, 'Progress', quiz_session_id)
+
+            for question_data in quiz_questions:
+                params = {
+                    'question_number': question_data['question_number'],
+                    'difficulty': question_data['difficulty'],
+                    'question_type': question_data['question_type'],
+                    'question_text': question_data['question_text'],
+                    'options': str(question_data.get('options')),
+                    'expected_answer': question_data['expected_answer'],
+                    'explanation': question_data.get('explanation'),
+                    'quiz_session_id': quiz_session_id
+                }            
+
+                await quiz_questions_repo.create_question(params)
+
+        background_tasks.add_task(summary_creator.summerize, user_id, message, answer, previous_summary, user_record['session_id'], None, quiz_session_id, wants_quiz, current_language, conversation_repo)
+
+        return answer
         
-        # query_embedding = model.encode(response.answer, convert_to_numpy=True, device='cpu').tolist()
-        # embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
-
-
-        # params = {
-        #     'user_id': user_id,
-        #     'course_id': None,
-        #     'module_item_id': None,
-        #     'message': response.answer,
-        #     'message_from': 'ai',
-        #     'session_id': user_record['session_id'],
-        #     'summary': summary,
-        #     'embedding': embedding_str
-        # }
-
-        # rec = await repo2.create(params)
-
-        # logger.info('response added in conversation: ', rec)
-
-        # print(response)
-        
-        return response
-        
-    except HTTPException:
+    except HTTPException as e:
+        print(e)
         raise
     except Exception as e:
         logger.error(f"Error in LTI course chat: {e}")

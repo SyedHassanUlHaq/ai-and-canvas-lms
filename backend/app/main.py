@@ -14,6 +14,10 @@ import json
 import traceback
 import os
 
+from sympy import re
+
+import re as regex
+
 from app.core.config import settings
 from app.core.canvas_config_rce import canvas_settings
 from app.services.ai_service_rce import ai_service
@@ -96,6 +100,7 @@ class ChatRequest(BaseModel):
     module_context: Optional[Dict[str, Any]] = None
     page_content: Optional[str] = None
     page_title: Optional[str] = None
+    yt_transcription: Optional[str] = None
 
 class ChatResponse(BaseModel):
     reply: str
@@ -143,9 +148,14 @@ def health():
             "error": str(e)
         }
 
+from app.services.helpers import detect_language
+from app.services.quiz_services import get_difficulty_by_quiz_session_id
+from app.repository.quiz_questions import QuizQuestionsRepository
+from app.repository.quiz_session import QuizSessionRepository
+
 # Core chat endpoint
-@app.post("/api/v1/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, http_request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)) -> Any:
+@app.post("/api/v1/chat")
+async def chat(request: ChatRequest, http_request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)) -> str:
     logger.info("🚀 Chat endpoint reached - request validation passed!")
     
     # Log the incoming request for debugging
@@ -155,9 +165,15 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
     logger.info(f"  - Course ID: {request.course_id}")
     logger.info(f"  - Module Item ID: {request.module_item_id}")
     logger.info(f"  - Page Content: {'Yes' if request.page_content else 'No'}")
+    logger.info(f"  - YouTube Transcription: {'Yes' if request.yt_transcription else 'No'}")
+    logger.info(f"  - Page Title: {'Yes' if request.page_title else 'No'}")
     logger.info(f"  - Module Context: {'Yes' if request.module_context else 'No'}")
     logger.info(f"  - Session ID: {request.session_id}")
-    
+
+    conversation_repo = ConversationMemoryRawRepository_rce(db)
+    quiz_questions_repo = QuizQuestionsRepository(db)
+    quiz_session_repo = QuizSessionRepository(db)
+
     # Also log the raw request body for debugging
     try:
         body = await http_request.body()
@@ -166,7 +182,14 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
         logger.info(f"🔍 Could not read raw body: {e}")
     
     # Detect user's language preference from message content
-    detected_language = ai_service.detect_user_language(request.message)
+    current_language = detect_language(request.message)
+
+    context = {
+        "page_title": request.page_title,
+        "page_content": request.page_content,
+        "video_transcription": request.yt_transcription,
+    }
+    # detected_language = ai_service.detect_user_language(request.message)
     
     try:
         
@@ -242,15 +265,17 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
             # Use specialized widget AI service with Gemini for database content
             logger.info("🤖 Using Widget AI Service with Gemini for database content")
             
-            repo = ConversationMemoryRawRepository_rce(db)
+            # repo = ConversationMemoryRawRepository_rce(db)
         
             query_embedding = model.encode(request.message, convert_to_numpy=True, device='cpu').tolist()
             embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
             summary=None
             history = []
+
             similar_convo = 'None'
-            exists = await repo.get_by_session_id(session_id=request.session_id)
+            exists = await conversation_repo.get_by_session_id(session_id=request.session_id)
+            logger.info(f"Exists: {exists}")
             if not exists:
             
                 params = {
@@ -261,83 +286,159 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                 'message_from': 'user',
                 'session_id': request.session_id,
                 'summary': None,
-                'embedding': embedding_str
+                'embedding': embedding_str,
+                'evaluation': None,
+                'quiz_session_id': None,
+                'quiz_active': False,
+                'current_language': current_language
                 # 'context_used': json.dumps(memory_data.get('context_used')) if memory_data.get('context_used') else None
                 }   
-                
-                await repo.create(params)
+
+                user_record = await conversation_repo.create(params)
             else:
-                similar_convo = await repo.find_similar_conversations(session_id=request.session_id, embedding=embedding_str)
-                summary = await repo.get_latest_summary(session_id=request.session_id)
-                history = await repo.format_conversations_for_chatbot(session_id=request.session_id)
+                similar_convo = await conversation_repo.find_similar_conversations(session_id=request.session_id, embedding=embedding_str)
+                summary = await conversation_repo.get_latest_summary(session_id=request.session_id)
+                history = await conversation_repo.format_conversations_for_chatbot(session_id=request.session_id)
+                user_record = await conversation_repo.get_by_session_id(session_id=request.session_id)
+                user_record = user_record[0]
+
+            logger.info(f"User Record: {user_record}")
+            quiz_active = user_record['quiz_active']
+            quiz_session_id = user_record['quiz_session_id']
+            latest_quiz_session_id = await conversation_repo.get_latest_quiz_session_id(user_record['session_id'])
+            quiz_difficulty = await get_difficulty_by_quiz_session_id(latest_quiz_session_id, quiz_questions_repo)
+
+
+            if quiz_active:
+                logger.info(f"Quiz State Active for session: {request.session_id}")
+                logger.info(f"Retrieving Questions for session_id: {quiz_session_id}")
                 
+                questions = await quiz_questions_repo.get_questions_by_session_id(user_record['quiz_session_id'])
+                logger.info(f"Retrieved Questions: {questions}")
                 
-            
-            
+                logger.info(f"Generating AI response for quiz state: {request.message[:50]}...")
+                response = widget_ai_service.generate_response(
+                    message=request.message,
+                    context_docs=context,
+                    language=current_language,
+                    history=history,
+                    summary=summary,
+                    similar_past_convo=similar_convo,
+                    difficulty=quiz_difficulty,
+                    quiz_active=quiz_active,
+                    questions=questions
+                )
+                try:
+                    cleaned_response = regex.sub(r'```json\s*|\s*```', '', response).strip()
+                    response_data = json.loads(cleaned_response)
+                except Exception as e:
+                    logger.error(f"Error parsing AI response: {e}")
+                    raise HTTPException(status_code=500, detail="Error parsing AI response")
+                
+                answer = response_data.get('response')
+                quiz_active = response_data.get('quiz_active')
+                if quiz_active:
+                    logger.info(f"Ongoing quiz question: {response_data.get('question_id')}...")
+                    background_tasks.add_task(summary_creator.summerize, None, request.message, answer, summary, user_record['session_id'], 'Progress', user_record['quiz_session_id'], True, current_language, conversation_repo)
+                else:
+                    logger.info(f"Quiz finished for session {request.session_id}. Updating evaluation...")
+                    if response_data.get('user_score') > 3:
+                        # await conversation_repo.update_user_evaluation_and_quiz_session(user_id, 'passed', user_record['quiz_session_id'], False)
+                        background_tasks.add_task(summary_creator.summerize, None, request.message, answer, summary, user_record['session_id'], 'passed', user_record['quiz_session_id'], False, current_language, conversation_repo)
+                        logger.info(f"Updated User's evaluation as passed")
+                    else:
+                        await conversation_repo.update_user_evaluation_and_quiz_session_by_session_id(user_record["session_id"], 'failed', user_record['quiz_session_id'], False)
+                        background_tasks.add_task(summary_creator.summerize, None, request.message, answer, summary, user_record['session_id'], 'failed', user_record['quiz_session_id'], False, current_language, conversation_repo)
+                        logger.info(f"Updated User's evaluation as failed")
+                return answer
             
             # Prepare user context
             user_context = {
                 "course_id": request.course_id,
                 "module_context": request.module_context
             }
-            
-            logger.info(f"🔍 Calling widget_ai_service.generate_response with context_docs: {len(context_docs)}")
+            logger.info(f"🔍 Calling widget_ai_service.generate_response with context: {context}")
             ai_response_dict = widget_ai_service.generate_response(
                 message=request.message,
-                context_docs=context_docs,
-                language=detected_language,
-                user_context=user_context,
+                context_docs=context,
+                language=current_language,
+                # user_context=user_context,
                 summary=summary,
-                similar_convo=similar_convo,
-                history=history
+                similar_past_convo=similar_convo,
+                history=history,
+                difficulty=quiz_difficulty,
+                questions=[],
+                quiz_active=False
             )
-            
-            background_tasks.add_task(summary_creator.summerize, None, request.message, ai_response_dict.get("reply", ""), summary, request.session_id, repo)
-            
-            # new_summary = await summary_creator.summerize(query=request.message, response=ai_response_dict.get("reply", ""), summary=summary, session_id=request.session_id, repo=repo)
-            
-            logger.info(f"✅ Widget AI service response: {ai_response_dict.get('reply', '')[:100]}...")
-            logger.info(f"🔍 Response source: {ai_response_dict.get('source', 'unknown')}")
-            
-            # Add memory-related fields for compatibility
-            ai_response_dict["insights"] = None
+            try:
+                cleaned_response = regex.sub(r'```json\s*|\s*```', '', ai_response_dict).strip()
+                response_data = json.loads(cleaned_response)
+            except Exception as e:
+                logger.error(f"Error parsing AI response: {e}")
+                raise HTTPException(status_code=500, detail="Error parsing AI response")
+            logger.info(f"Response data: {(response_data)}")
+            # Extract the main components
+            answer = response_data.get("answer")
+            wants_quiz = response_data.get("wants_quiz")
+            # spoken_language = response_data.get("spoken_language")
+            # quiz_questions = response_data.get("quiz")
+            quiz_session_id = None
+            if wants_quiz == True:
+                quiz_questions = response_data.get("quiz")
+                quiz_session_repo = QuizSessionRepository(db)
+                quiz_session_id = await quiz_session_repo.create_quiz_session()
+                quiz_session_id = quiz_session_id['id']
+                logger.info(f"Session {request.session_id} wants to start a quiz with {len(quiz_questions)} questions. Quiz Session ID: {quiz_session_id}")
+                await conversation_repo.update_quiz_active_status(request.session_id, True)
+                await conversation_repo.update_user_evaluation_and_quiz_session_by_session_id(request.session_id, 'Progress', quiz_session_id)
+                for question_data in quiz_questions:
+                    params = {
+                        'question_number': question_data['question_number'],
+                        'difficulty': question_data['difficulty'],
+                        'question_type': question_data['question_type'],
+                        'question_text': question_data['question_text'],
+                        'options': str(question_data.get('options')),
+                        'expected_answer': question_data['expected_answer'],
+                        'explanation': question_data.get('explanation'),
+                        'quiz_session_id': quiz_session_id
+                    }            
+                    await quiz_questions_repo.create_question(params)
+            background_tasks.add_task(summary_creator.summerize, None, request.message, answer, summary, request.session_id, None, quiz_session_id, wants_quiz, current_language, conversation_repo)
+            return answer
             
         else:
             # Use regular AI service for knowledge base content
             logger.info("🤖 Using regular AI service for knowledge base content")
-            ai_response_dict = ai_service.generate_response(
+            ai_response_dict = widget_ai_service.generate_response(
                 message=request.message,
-                context_docs=context_docs,
-                language=detected_language,
-                course_id=request.course_id
+                context_docs=context,
+                language=current_language,
+                # user_context={},
+                summary='',
+                similar_past_convo='',
+                history=[],
+                difficulty='easy',
+                questions=[],
+                quiz_active=False
             )
             
             # logger.info(f"✅ Regular AI service response: {ai_response_dict.get('reply', '')[:100]}...")
-        
+            try:
+                cleaned_response = regex.sub(r'```json\s*|\s*```', '', ai_response_dict).strip()
+                response_data = json.loads(cleaned_response)
+            except Exception as e:
+                logger.error(f"Error parsing AI response: {e}")
+                raise HTTPException(status_code=500, detail="Error parsing AI response")
 
-        # Convert dictionary response to ChatResponse object
-        ai_response = ChatResponse(
-            reply=ai_response_dict.get("reply", ""),
-            context_used=ai_response_dict.get("context_used", []),
-            confidence=ai_response_dict.get("confidence", "low"),
-            total_context_docs=ai_response_dict.get("total_context_docs", 0),
-            insights=ai_response_dict.get("insights"),
-            error=ai_response_dict.get("error"),
-            source=ai_response_dict.get("source"),
-            timestamp=ai_response_dict.get("timestamp")
-        )
-        
-        return ai_response
+
+            logger.info(f"Response data: {(response_data)}")
+
+                # Extract the main components
+            return response_data.get("answer")
         
     except Exception as e:
         logger.error(f"Chat error: {e}")
-        return ChatResponse(
-            reply=f"Sorry, I encountered an error: {str(e)}",
-            context_used=[],
-            confidence="low",
-            total_context_docs=0,
-            error=str(e)
-        )
+        return 'sorry, I could not process your request at this time. Please try again later.'
 
 
 # Widget endpoints

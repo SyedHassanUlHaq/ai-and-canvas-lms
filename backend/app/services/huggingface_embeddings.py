@@ -14,7 +14,7 @@ async def embed_course_doc(content: str, doc_name: str, module_name: str):
     
     text = text.strip()
     print('text: ', text)
-    embedding = model.encode(text, convert_to_numpy=True, normalize_embeddings=True, device='cpu')
+    embedding = model.encode(text, convert_to_numpy=True, device='cpu')
     
     return {
         "doc_name": doc_name,

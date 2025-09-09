@@ -58,7 +58,7 @@ class Settings(BaseModel):
     @property
     def connection_url(self) -> str:
         """Construct PostgreSQL connection URL from environment variables"""
-        return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}?ssl=require"
 
 # Create settings instance
 settings = Settings()
