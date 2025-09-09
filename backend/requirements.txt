@@ -4,17 +4,10 @@ uvicorn[standard]
 pydantic
 python-multipart
 
-# AI and LangChain dependencies
-langchain
-langchain-community
-langchain-google-vertexai
-langchain-huggingface
-langchain-chroma
 
 fasttext
 
 # Vector database and embeddings
-chromadb
 sentence-transformers
 
 # Google Cloud dependencies
@@ -29,18 +22,12 @@ psycopg2-binary
 cryptography
 
 # Utilities
-loguru
-beautifulsoup4
-lxml
+
 cryptography
 
-# Testing
-pytest
-pytest-asyncio
-httpx
 requests 
 
 asyncpg
-
 openai-whisper 
 yt-dlp
+
