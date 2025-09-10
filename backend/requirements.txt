@@ -4,14 +4,21 @@ uvicorn[standard]
 pydantic
 python-multipart
 
+# AI and LangChain dependencies
+
 
 fasttext
 
 # Vector database and embeddings
+torch==2.3.0+cpu
+torchvision==0.18.0+cpu
+torchaudio==2.3.0+cpu
+-f https://download.pytorch.org/whl/cpu/torch_stable.html
 sentence-transformers
 
 # Google Cloud dependencies
 google-cloud-aiplatform
+pydantic_settings
 
 # Canvas and LTI dependencies
 requests
@@ -28,6 +35,6 @@ cryptography
 requests 
 
 asyncpg
+
 openai-whisper 
 yt-dlp
-
