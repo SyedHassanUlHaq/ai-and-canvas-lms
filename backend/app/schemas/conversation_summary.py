@@ -11,7 +11,6 @@ class ConversationMemoryBase(BaseModel):
     message: str = Field(..., min_length=1)
     message_from: str = Field(default='user', pattern='^(user|assistant)$')
     session_id: str = Field(..., min_length=1, max_length=100)
-    # context_used: Optional[Dict[str, Any]] = None
 
 class ConversationMemoryCreate(ConversationMemoryBase):
     pass
@@ -19,12 +18,10 @@ class ConversationMemoryCreate(ConversationMemoryBase):
 class ConversationMemoryUpdate(BaseModel):
     message: Optional[str] = Field(None, min_length=1)
     message_from: Optional[str] = Field(None, pattern='^(user|assistant)$')
-    # context_used: Optional[Dict[str, Any]] = None
 
 class ConversationMemoryResponse(ConversationMemoryBase):
     id: int
     timestamp: datetime
-    # context_used: Optional[str] = None  # JSON string as stored in DB
     
     class Config:
         from_attributes = True

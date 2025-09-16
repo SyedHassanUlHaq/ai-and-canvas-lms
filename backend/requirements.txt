@@ -28,10 +28,6 @@ sqlalchemy
 psycopg2-binary
 cryptography
 
-# Utilities
-
-cryptography
-
 requests 
 
 asyncpg

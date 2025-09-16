@@ -188,6 +188,44 @@
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
+        
+        /* Typing indicator animation */
+        .typing-indicator {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        
+        .typing-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background-color: #666;
+          animation: typing-wave 1.4s infinite ease-in-out;
+        }
+        
+        .typing-dot:nth-child(1) {
+          animation-delay: -0.32s;
+        }
+        
+        .typing-dot:nth-child(2) {
+          animation-delay: -0.16s;
+        }
+        
+        .typing-dot:nth-child(3) {
+          animation-delay: 0s;
+        }
+        
+        @keyframes typing-wave {
+          0%, 80%, 100% {
+            transform: scale(0.8);
+            opacity: 0.5;
+          }
+          40% {
+            transform: scale(1.2);
+            opacity: 1;
+          }
+        }
     </style>
 </head>
 <body>
@@ -329,8 +367,8 @@
             input.value = '';
             document.getElementById('send-button').disabled = true;
             
-            // Show typing indicator
-            const typingId = addMessage('ai', '...', 'typing');
+            // Show animated typing indicator
+            const typingId = addMessage('ai', '', 'typing');
             
             try {
                 // Send to LTI chat API
@@ -407,8 +445,18 @@
             messageDiv.id = messageId;
             messageDiv.className = `message ${sender} ${type}`;
             
+            // Handle typing indicator with animated dots
+            if (type === 'typing') {
+                messageDiv.innerHTML = `
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                `;
+            }
             // Handle special formatting
-            if (sender === 'ai') {
+            else if (sender === 'ai') {
                 // Quiz question - format with HTML
                 let formattedText = text
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold**

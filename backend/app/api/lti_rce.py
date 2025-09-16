@@ -336,10 +336,10 @@ def get_ai_tutor_embed_html(lti_context: Dict[str, Any]) -> str:
     # Create the embedded widget HTML - Canvas-compatible without inline JavaScript
     embed_html = f"""
    
-        <div id="ai-tutor-widget-{course_id}" style="min-height: 400px;">
+        <div id="ai-tutor-widget-{course_id}" style="min-height: 600px;">
             <iframe 
                 src="{tool_url}/ai-tutor?course_id={database_course_id}&user_id={user_id}&course_title={course_title}&lti_launch=true&context_type=lti_embed&database_course_id={database_course_id}"
-                style="width: 100%; height: 500px; border: none; border-radius: 8px;"
+                style="width: 100%; height: 550px; border: none; border-radius: 8px;"
                 title="AI Tutor Assistant"
                 allow="microphone; camera"
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals">

@@ -1,8 +1,6 @@
 import json 
 import logging
 import os
-import json
-import logging
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -53,7 +51,6 @@ def setup_database(chunks_data):
                     parent_id=chunk_data.get('parent_id'),
                     related_ids=chunk_data.get('related_ids', [])
                 )
-                print('HELLL', chunk.id)
                 chunks.append(chunk)
         logger.info(f"✅ Loaded {len(chunks)} chunks")
         

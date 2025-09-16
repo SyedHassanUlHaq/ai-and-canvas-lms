@@ -7,11 +7,29 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
   
-    /* Widget box - Always visible */
+    /* Floating button */
+    .chat-toggle {
+      background: #008ee2;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      cursor: pointer;
+      font-size: 26px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s ease;
+    }
+    .chat-toggle:hover {
+      transform: scale(1.05);
+      background: #007acc;
+    }
+  
+    /* Widget box */
     .widget-container {
-      display: flex;
+      display: none;
       position: absolute;
-      bottom: 0;
+      bottom: 80px;
       right: 0;
       width: 350px;
       max-height: 500px;
@@ -20,6 +38,11 @@
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
       overflow: hidden;
       flex-direction: column;
+      z-index: 99999;
+    }
+  
+    .widget-container.active {
+      display: flex;
       z-index: 99999;
     }
   
@@ -139,11 +162,52 @@
     .chat-input button:hover {
       background: #007acc;
     }
+    
+    /* Typing indicator animation */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #666;
+      animation: typing-wave 1.4s infinite ease-in-out;
+    }
+    
+    .typing-dot:nth-child(1) {
+      animation-delay: -0.32s;
+    }
+    
+    .typing-dot:nth-child(2) {
+      animation-delay: -0.16s;
+    }
+    
+    .typing-dot:nth-child(3) {
+      animation-delay: 0s;
+    }
+    
+    @keyframes typing-wave {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1.2);
+        opacity: 1;
+      }
+    }
   </style>
   
       <div class="chat-widget">
-      <!-- Chat Box - Always Visible -->
-      <div class="widget-container active" id="chat-widget">
+        <!-- Floating Button -->
+        <button class="chat-toggle" onclick="toggleChat()">💬</button>
+      
+        <!-- Hidden Chat Box -->
+        <div class="widget-container" id="chat-widget">
       <div class="header">
         <h1>🎓 AI Tutor</h1>
         <p>Your Learning Assistant</p>
@@ -184,6 +248,12 @@
         }
 
         window.addEventListener('load', initializeWidget);
+
+        function toggleChat() {
+            document.getElementById("chat-widget").classList.toggle("active");
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
 
         // Initialize the widget
         function initializeWidget() {
@@ -496,8 +566,8 @@
             input.value = '';
             document.getElementById('send-button').disabled = true;
             
-            // Show typing indicator
-            const typingId = addMessage('ai', '...', 'typing');
+            // Show animated typing indicator
+            const typingId = addMessage('ai', '', 'typing');
             
             try {
                 // Send to AI chat API
@@ -594,8 +664,19 @@
             
             messageDiv.id = messageId;
             messageDiv.className = `message ${sender} ${type}`;
+            
+            // Handle typing indicator with animated dots
+            if (type === 'typing') {
+                messageDiv.innerHTML = `
+                    <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                `;
+            }
             // Handle quiz messages with special formatting
-            if (sender === 'ai' && text.includes('🎯')) {
+            else if (sender === 'ai' && text.includes('🎯')) {
                 // Quiz question - format with HTML
                 messageDiv.innerHTML = text.replace(/\n/g, '<br>');
             } else if (sender === 'ai' && text.includes('🎉')) {

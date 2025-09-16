@@ -3,23 +3,18 @@ FastAPI application for AI Tutor Platform - Clean Version
 Simplified for iframe widget flow - only essential endpoints
 """
 import logging
+import json
+import os
+import httpx
+import re as regex
 from typing import Dict, List, Any, Optional
-from fastapi import FastAPI, Request, HTTPException, Query
+from fastapi import FastAPI, Request, HTTPException, Query, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime
-import json
-import traceback
-import os
-
-from sympy import re
-
-import re as regex
-
 from app.core.config import settings
-from app.core.canvas_config_rce import canvas_settings
 from app.services.ai_service_rce import ai_service
 from app.services.database_service_rce import database_service
 from app.canvas.canvas_service_rce import canvas_service
@@ -27,10 +22,8 @@ from app.services.widget_ai_service_rce import widget_ai_service
 from app.services.summarize_conversation import summary_creator
 from app.repository.conversation_rce import ConversationMemoryRawRepository_rce
 from app.api.lti import model
-from fastapi import Depends
 from app.core.dependancies import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import BackgroundTasks
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, settings.log_level))
@@ -46,9 +39,7 @@ app = FastAPI(
 
 # Add global exception handler for validation errors
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 engine = create_async_engine(
     settings.connection_url,
@@ -496,17 +487,33 @@ def get_ai_status():
     except Exception as e:
         logger.error(f"Error getting AI status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+# DASHBOARD ENDPOINTS
+
+@app.get("/course/{course_id}/students/count")
+async def get_total_students(course_id: int):
+    url = f"{settings.CANVAS_URL}/api/v1/courses/{course_id}?include[]=total_students"
+    headers = {"Authorization": f"Bearer {settings.CANVAS_API_TOKEN}"}
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to fetch course data")
+
+    data = response.json()
+    total_students = data.get("total_students")
+
+    if total_students is None:
+        raise HTTPException(status_code=404, detail="total_students not found in response")
+
+    return {"course_id": course_id, "total_students": total_students}
 # Include content router
 from app.api.content_rce import router as content_router
 app.include_router(content_router)
 
 # Include LTI router
 from app.api.lti_rce import router as lti_router
-app.include_router(lti_router)
-
-
-from app.api.lti import router as lti_router
 app.include_router(lti_router)
 
 from app.api.setup_db import router as db_router

@@ -3,25 +3,31 @@ LTI 1.3 API Endpoints
 """
 import logging
 import json
-from typing import Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Request, HTTPException, Form, Query
+from fastapi import APIRouter, Request, HTTPException, Form, Query, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
-
 from app.services.lti_service import lti_service
 from app.models.lti_models import LTILaunchResponse, LTIDeepLinkingResponse
-# from app.services.ai_service import ai_service
 from app.services.memory_service import memory_service
-# from app.services.lti_ai_service import lti_ai_service
 from app.services.canvas_api_service import canvas_api_service
-# from app.api.chat import search_similar_chunks
 from app.services.vector import AITutor, TutorConfig
 from app.repository.conversation_memory import ConversationMemoryRepository, ConversationMemoryRawRepository
-from fastapi import Depends
-from app.core.dependancies import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repository.user_sessions import SessionRepository
+from app.api.setup_db import get_top_5_content
+from app.core.dependancies import get_db
+from dataclasses import dataclass
+from sentence_transformers import SentenceTransformer
+from app.services.summarize_conversation import summary_creator
+from app.services.quiz_services import *
+from app.repository.quiz_questions import QuizQuestionsRepository
+from app.repository.quiz_session import QuizSessionRepository
+from app.services.helpers import detect_language
+import re
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -519,62 +525,6 @@ async def chat_refresh(
         logger.error(f"Error in LTI launch GET: {e}")
         raise HTTPException(status_code=500, detail="LTI launch GET failed")
 
-@router.post("/deep-linking")
-async def lti_deep_linking(
-    request: Request,
-    id_token: str = Form(..., description="LTI ID token"),
-    client_id: str = Form(..., description="Client ID")
-):
-    """LTI 1.3 deep linking endpoint"""
-    try:
-        logger.info(f"LTI deep linking request for client: {client_id}")
-        
-        # Verify LTI token
-        is_valid, lti_payload = lti_service.verify_lti_request(id_token, client_id)
-        
-        if not is_valid:
-            logger.error("LTI token verification failed")
-            raise HTTPException(status_code=401, detail="Invalid LTI token")
-        
-        # Create deep linking response
-        deep_linking_response = LTIDeepLinkingResponse(
-            content_items=[
-                {
-                    "type": "ltiResourceLink",
-                    "title": "AI Tutor",
-                    "text": "AI-powered tutoring and assessment tool",
-                    "url": str(request.base_url).rstrip('/') + "/lti/launch",
-                    "icon": {
-                        "url": str(request.base_url).rstrip('/') + "/static/ai-tutor-icon.png",
-                        "width": 64,
-                        "height": 64
-                    },
-                    "custom": {
-                        "ai_tutor_enabled": "true",
-                        "quiz_enabled": "true",
-                        "conversation_enabled": "true"
-                    }
-                }
-            ],
-            data="ai_tutor_deep_linking",
-            msg="AI Tutor tool configured successfully"
-        )
-        
-        # Render deep linking response
-        return templates.TemplateResponse(
-            "lti_deep_linking.html",
-            {
-                "request": request,
-                "deep_linking_response": deep_linking_response.dict()
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in LTI deep linking: {e}")
-        raise HTTPException(status_code=500, detail="LTI deep linking failed")
-
 @router.get("/session/{session_token}")
 async def get_lti_session(session_token: str):
     """Get LTI session data"""
@@ -700,39 +650,6 @@ async def delete_lti_session(session_token: str):
         logger.error(f"Error deleting LTI session: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete session")
 
-# @router.post("/chat")
-# async def lti_chat(
-#     request: Request,
-#     message: str = Form(..., description="User message"),
-#     session_token: str = Form(..., description="LTI session token")
-# ):
-#     """Chat endpoint for LTI users"""
-#     try:
-#         # Get LTI session
-#         session_data = memory_service.get_lti_session(session_token)
-        
-#         if not session_data:
-#             raise HTTPException(status_code=401, detail="Invalid session")
-        
-#         # Create chat request
-#         chat_request = {
-#             "message": message,
-#             "user_id": session_data["user_id"],
-#             "course_id": session_data["course_id"],
-#             "language": "en"  # Default language, can be made configurable
-#         }
-        
-#         # Generate AI response
-#         response = ai_service.generate_response(chat_request)
-        
-#         return {"response": response}
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Error in LTI chat: {e}")
-#         raise HTTPException(status_code=500, detail="Chat failed")
-
 @router.get("/health")
 async def lti_health():
     """LTI service health check"""
@@ -774,7 +691,7 @@ async def lti_icon():
         <text x="16" y="22" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="white">AI</text>
     </svg>'''
     
-    from fastapi.responses import Response
+    
     return Response(
         content=icon_svg,
         media_type="image/svg+xml",
@@ -788,7 +705,6 @@ async def lti_icon():
 @router.options("/icon")
 async def lti_icon_options():
     """CORS preflight for icon endpoint"""
-    from fastapi.responses import Response
     return Response(
         status_code=200,
         headers={
@@ -813,7 +729,6 @@ async def lti_favicon():
         <text x="16" y="22" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="white">AI</text>
     </svg>'''
     
-    from fastapi.responses import Response
     return Response(
         content=icon_svg,
         media_type="image/svg+xml",
@@ -879,119 +794,11 @@ async def platform_storage_get(
         logger.error(f"Platform storage GET error: {e}")
         raise HTTPException(status_code=500, detail="Platform storage operation failed") 
 
-# @router.get("/course/progress/{session_token}")
-# async def get_course_progress(
-#     request: Request,
-#     session_token: str
-# ):
-#     """Get course progress and module completion for LTI user"""
-#     try:
-#         logger.info(f"Course progress request for session: {session_token}")
-        
-#         # Verify session
-#         session_data = memory_service.get_lti_session(session_token)
-#         logger.info(f"Session data retrieved: {session_data is not None}")
-        
-#         if not session_data:
-#             logger.error(f"No session found for token: {session_token}")
-#             raise HTTPException(status_code=401, detail="Invalid session")
-        
-#         # Get course summary using LTI AI service
-#         logger.info(f"Getting course summary for user: {session_data['user_id']}, course: {session_data['course_id']}")
-        
-#         course_summary = lti_ai_service.get_course_summary(
-#             user_id=session_data["user_id"],
-#             course_id=session_data["course_id"],
-#             lti_context=session_data
-#         )
-        
-#         logger.info(f"Course summary retrieved: {course_summary is not None}")
-#         if course_summary:
-#             logger.info(f"Course summary keys: {list(course_summary.keys())}")
-        
-#         if "error" in course_summary:
-#             logger.error(f"Course summary error: {course_summary['error']}")
-#             raise HTTPException(status_code=500, detail=course_summary["error"])
-        
-#         return course_summary
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Error getting course progress: {e}")
-#         raise HTTPException(status_code=500, detail="Failed to get course progress")
 
-from app.api.setup_db import get_top_5_content
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends, HTTPException
-from app.core.dependancies import get_db
 
-# @router.post("/course/chat")
-# async def lti_course_chat(
-#     request: Request,
-#     message: str = Form(..., description="User message"),
-#     session_token: str = Form(..., description="LTI session token"),
-#     language: str = Form("en", description="Language preference"),
-#     db: AsyncSession = Depends(get_db)
-# ):
-#     """LTI course chat with Canvas progress context"""
-#     try:
-
-#         response = get_top_5_content(message, db)
-#         context = response['results']
-#         # Verify session
-#         logger.info(f"Course chat request for session: {session_token}")
-#         session_data = memory_service.get_lti_session(session_token)
-#         logger.info(f"Session data retrieved: {session_data is not None}")
-        
-#         if not session_data:
-#             logger.error(f"No session found for token: {session_token}")
-#             raise HTTPException(status_code=401, detail="Invalid session")
-        
-#         # Generate contextual AI response with Canvas progress
-#         logger.info(f"Generating AI response for message: {message[:50]}...")
-#         response = lti_ai_service.generate_contextual_response(
-#             message=message,
-#             user_id=session_data["user_id"],
-#             course_id=session_data["course_id"],
-#             lti_context=response,
-#             language=language
-#         )
-        
-#         logger.info(f"AI response generated: {response is not None}")
-#         if response:
-#             logger.info(f"Response keys: {list(response.keys())}")
-        
-#         return response
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         logger.error(f"Error in LTI course chat: {e}")
-#         raise HTTPException(status_code=500, detail="Course chat failed")
-
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, Tuple
-from sentence_transformers import SentenceTransformer
-from app.services.summarize_conversation import summary_creator
-from fastapi import BackgroundTasks
-from app.services.quiz_services import *
-from app.repository.quiz_questions import QuizQuestionsRepository
-from app.repository.quiz_session import QuizSessionRepository
-from app.services.helpers import detect_language
-import json
-import re
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# @dataclass
-# class TutorResponse:
-#     """Represents a response from the AI tutor"""
-#     answer: str
-#     confidence: float
-#     sources: List[Dict[str, Any]]
-#     suggested_actions: List[str]
-#     learning_objectives: List[str]
 
 @router.post("/course/chatv2")
 async def lti_course_chat(
@@ -1004,7 +811,7 @@ async def lti_course_chat(
 ):
     """LTI course chat with Canvas progress context"""
     try:
-        print('hello world')
+
 
         tutor = AITutor()
 
@@ -1023,11 +830,7 @@ async def lti_course_chat(
         user_record = await conversation_repo.get_user_by_id(user_id)
         latest_quiz_session_id = await conversation_repo.get_latest_quiz_session_id(user_record['session_id'])
         logging.info(f"Latest quiz session ID for user {user_id}: {latest_quiz_session_id}")
-        # if rec:
-        #     latest_quiz_session_id = rec['quiz_session_id']
-        # else:
-        #     latest_quiz_session_id = None
-        # current_language = user_record['current_language']
+
         is_quiz_active = user_record['quiz_active']
 
         quiz_difficulty = await get_difficulty_by_quiz_session_id(latest_quiz_session_id, quiz_questions_repo)
@@ -1150,8 +953,6 @@ async def lti_course_chat(
         # Extract the main components
         answer = response_data.get("answer")
         wants_quiz = response_data.get("wants_quiz")
-        # spoken_language = response_data.get("spoken_language")
-        # quiz_questions = response_data.get("quiz")
         quiz_session_id = None
 
         if wants_quiz == True:

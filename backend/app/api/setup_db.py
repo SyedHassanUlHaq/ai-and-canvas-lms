@@ -178,7 +178,7 @@ async def get_top_5_content(query: str, db: AsyncSession) -> List[Dict]:
     query_embedding = model.encode(query, convert_to_numpy=True, device='cpu').tolist()
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
     
-    print('hello world')
+
 
     try:
         # 2️⃣ Use SQLAlchemy with pgvector distance operator
