@@ -1,23 +1,19 @@
-from sqlalchemy import Column, String, Text, DateTime, Integer, MetaData
-from sqlalchemy.dialects.postgresql import VARCHAR
+from sqlalchemy import Column, String, Text, Integer, MetaData
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
-# from pgvector.sqlalchemy import Vector  # Import Vector from pgvector.sqlalchemy, 
+# from pgvector.sqlalchemy import Vector
 
-import warnings
-try:
-    from pgvector.sqlalchemy import Vector
-    HAS_VECTOR = True
-except ImportError as e:
-    HAS_VECTOR = False
-    warnings.warn(f"pgvector not available: {e}. Using Text fallback.")
+# import warnings
+# try:
+#     HAS_VECTOR = True
+# except ImportError as e:
+#     HAS_VECTOR = False
+#     warnings.warn(f"pgvector not available: {e}. Using Text fallback.")
     
     # Create a fallback Vector class
-    from sqlalchemy import TypeDecorator
-    class Vector(TypeDecorator):
-        impl = Text
-        cache_ok = True
+from sqlalchemy import TypeDecorator
+class Vector(TypeDecorator):
+    impl = Text
+    cache_ok = True
 
 
 # Base = declarative_base()
@@ -35,7 +31,7 @@ class CourseEmbeddings(Base):
     doc_name = Column(String, nullable=False)
     module_name = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    embedding = Column(Vector(384))  # matches all-MiniLM-L6-v2
+    embedding = Column(Vector(3072))  # matches all-MiniLM-L6-v2
     # created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     def __repr__(self):

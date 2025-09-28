@@ -1,44 +1,68 @@
 """
 Widget AI Service for AI Tutor Widget
-Uses Gemini from Vertex AI with database content and specialized system prompts
+Uses either AWS Bedrock Claude or Google Vertex AI Gemini based on USE_BEDROCK environment variable
 """
 
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import os
-import google.auth
-from google.cloud import aiplatform
-from vertexai.generative_models import GenerativeModel
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
 
-logger = logging.getLogger(__name__)
+# Conditional imports based on USE_BEDROCK setting
+USE_BEDROCK = os.getenv('USE_BEDROCK').lower() == 'true'
+
+if USE_BEDROCK:
+    from .bedrock_service import bedrock_service
+    logger = logging.getLogger(__name__)
+    logger.info("🤖 Using AWS Bedrock Claude for AI generation")
+else:
+    import google.auth
+    from google.cloud import aiplatform
+    from vertexai.generative_models import GenerativeModel
+    logger = logging.getLogger(__name__)
+    logger.info("🤖 Using Google Vertex AI Gemini for AI generation")
 
 
 class WidgetAIService:
-    """AI service specifically for the widget using Gemini and database content"""
+    """AI service specifically for the widget using either Bedrock Claude or Gemini based on USE_BEDROCK setting"""
     
     def __init__(self, credentials_path: str = "elivision-ai-1-4e63af45bd31.json", project_id: str = 'elivision-ai-1'):
         self.project_id = project_id
         self.credentials_path = credentials_path
+        self.use_bedrock = USE_BEDROCK
         
-        # Initialize Google Cloud credentials FIRST
-        self._setup_credentials()
-        
-        # Then initialize models
-        self._initialize_gemini()
-        # self._initialize_embedding_model()
-        
+        # Initialize AI service based on USE_BEDROCK setting
+        if self.use_bedrock:
+            self._initialize_bedrock()
+        else:
+            self._initialize_gemini()
         
         self.conversation_history = []
         self.student_profile = {}
 
 
+    def _initialize_bedrock(self):
+        """Initialize AWS Bedrock service"""
+        try:
+            self.bedrock = bedrock_service
+            logger.info("✅ AWS Bedrock service initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Bedrock: {e}")
+            raise
+
     def _initialize_gemini(self):
         """Initialize Gemini model"""
         try:
-            aiplatform.init(project=self.project_id, location="us-central1")
-            self.gemini_model = GenerativeModel("gemini-2.5-pro")
+            # Setup Google Cloud credentials first
+            self._setup_credentials()
+            
+            # Initialize Gemini
+            aiplatform.init(project=self.project_id, location="asia-southeast1")
+            self.gemini_model = GenerativeModel("gemini-2.5-flash")
             logger.info("✅ Gemini model initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini: {e}")
@@ -57,10 +81,11 @@ class WidgetAIService:
         # Quiz functionality removed
     
     def generate_response(self, message: str, context_docs: List[Dict[str, Any]] = None, summary: str = None, similar_past_convo: Any = None, history: Any = None, language: str = None, difficulty: str = 'easy', quiz_active: bool = False, questions: Any = None) -> Dict[str, Any]:
-        """Generate AI response with quiz support"""
+        """Generate AI response with quiz support using either Bedrock or Gemini"""
         try:
             logger.info(f"Generating AI response for message: {message[:50]}...")
             logger.info(f"🔍 Message: '{message}', Language: {language}")
+            logger.info(f"🤖 Using {'Bedrock' if self.use_bedrock else 'Gemini'} for AI generation")
             
             # Regular AI response (quiz functionality removed)
             if quiz_active:
@@ -68,14 +93,19 @@ class WidgetAIService:
             else:
                 prompt = self._generate_regular_response(message, context_docs=context_docs, summary=summary, similar_past_convo=similar_past_convo, history=history, language=language, difficulty=difficulty)
 
-            response = self.gemini_model.generate_content(prompt)
-            answer = response.text
-            logger.info(f"AI Response: {answer}")
+            # Generate response using the appropriate AI service
+            if self.use_bedrock:
+                answer = self.bedrock.generate_content(prompt, is_quiz_active=quiz_active)
+            else:
+                response = self.gemini_model.generate_content(prompt)
+                answer = response.text
+                
+            # logger.info(f"AI Response: {answer}")
             return answer
 
         except Exception as e:
             logger.error(f"Error generating AI response: {e}")
-            return "{ 'answer': 'Sorry, I Could not process your request at this time. Please try again later.', 'wants_quiz': False, 'spoken_language': english, 'quiz': [] }"
+            return "{ 'answer': 'Sorry, I Could not process your request at this time. Please try again later.', 'wants_quiz': false, 'spoken_language': english, 'quiz': [] }"
     
 
     
@@ -86,7 +116,7 @@ class WidgetAIService:
             if len(history) > 3:
                 history = history[-3:]
 
-        
+            print("CONTEXT DOCS: ", context_docs)
         # Create the comprehensive prompt
             prompt = f"""
                 You are an expert AI tutor for a course on Design Thinking, Psychology, and Leadership Development. 
@@ -104,9 +134,9 @@ class WidgetAIService:
 
                 ### INSTRUCTIONS:
                 1. **Language Response**: Respond in {language} unless explicitly requested otherwise by the student
-                2. **Content Accuracy**: Base responses strictly on provided course material, connecting concepts to real-world applications
+                2. **Content Accuracy**: Greet the students and base responses strictly on provided course material and the youtube transcript (if available), connecting concepts to real-world applications
                 3. **Context Utilization**: Always incorporate conversation context for personalized responses
-                4. **Out of context Questions**: Always respond with "Your question is not related to our current topic. If you have any queries on the current topic, Let me know and I'll be happy to help" if the question is not related to the current topic.
+                4. **Out of context Questions**: for every question, check if the query is related to the RELEVANT COURSE MATERIAL. if it s not, then tell the respond with "Your question is not related to our current topic. If you have any queries on the current topic, Let me know and I'll be happy to help".
                 5. **Conciseness**: Keep responses brief yet comprehensive
                 6. **Tutoring Approach**: Be supportive, encouraging, and provide step-by-step explanations for complex concepts
                 7. **Error Handling**: Never mention inability to find information or system errors
@@ -115,6 +145,8 @@ class WidgetAIService:
                     - For MEDIUM difficulty: ALWAYS include the question text AND all 4 multiple choice options (A, B, C, D) in the "answer" field
                     - Format: "Question text?\nA: Option 1\nB: Option 2\nC: Option 3\nD: Option 4"
                 11. **Structured Output**: Always respond with valid JSON format
+                12. **NEVER ADD `//n` in JSON STRINGS, REPLACE THEM WITH `/n`**
+                13. **ALWAYS REPLACE `//n` with `/n`**
 
                 ### QUIZ DIFFICULTY GUIDELINES:
                 - **Easy**: ALWAYS true/false questions testing basic recall
@@ -123,9 +155,9 @@ class WidgetAIService:
                 
                 **CRITICAL**: Follow difficulty guidelines EXACTLY. Medium difficulty MUST be multiple choice with 4 options.
 
-                ### CRITICAL: Your response must always be in the specified JSON format,  NO ADDITIONAL TEXT.
+                ### CRITICAL: Your response must always be in the specified JSON format,  NO ADDITIONAL TEXT. NUMBER OF QUESTIONS MUST ALWAYS BE 5 IF THE USER WANTS QUIZ
 
-                ### STRICT FORMATTING RULES:
+                ### STRICT FORMATTING RULES: 
                     - NO code block markers (no ```json or ```)
                     - NO text before or after the JSON
                     - NO explanations or additional content
@@ -136,6 +168,7 @@ class WidgetAIService:
 
                 ### RESPONSE FORMAT:
                 Always return valid JSON with this structure:
+                Schema:
                 {{
                     "answer": "Your educational response here", 
                     "wants_quiz": false,
@@ -144,6 +177,7 @@ class WidgetAIService:
                 }}
 
                 Quiz questions should follow this format:
+                Schema:
                 {{
                     "question_number": 1,
                     "difficulty": "easy/medium/hard",

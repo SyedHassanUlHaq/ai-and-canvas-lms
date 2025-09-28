@@ -246,81 +246,6 @@ class MemoryService:
                 session.close()
             return False
 
-    # def set_quiz_state(self, user_id: str, course_id: str, quiz_data: Dict[str, Any], 
-    #                    module_item_id: Optional[str] = None) -> bool:
-    #     """Set quiz state in database"""
-    #     try:
-    #         if not self.engine:
-    #             return False
-            
-    #         session = self.get_session()
-            
-    #         # Check if quiz state already exists
-    #         # existing_quiz = session.query(QuizState).filter(
-    #         #     QuizState.user_id == user_id,
-    #         #     QuizState.course_id == course_id
-    #         # ).first()
-            
-    #         # if existing_quiz:
-    #         #     # Update existing quiz state
-    #         #     existing_quiz.quiz_data = json.dumps(quiz_data)
-    #         #     existing_quiz.module_item_id = module_item_id
-    #         #     existing_quiz.current_question = quiz_data.get("current_question", 0)
-    #         #     existing_quiz.total_questions = quiz_data.get("total_questions", 0)
-    #         #     existing_quiz.difficulty = quiz_data.get("difficulty")
-    #         #     existing_quiz.last_updated = datetime.utcnow()
-    #         # else:
-    #         #     # Create new quiz state
-    #         #     new_quiz = QuizState(
-    #         #         user_id=user_id,
-    #         #         course_id=course_id,
-    #         #         module_item_id=module_item_id,
-    #         #         quiz_data=json.dumps(quiz_data),
-    #         #         current_question=quiz_data.get("current_question", 0),
-    #         #         total_questions=quiz_data.get("total_questions", 0),
-    #         #         difficulty=quiz_data.get("difficulty")
-    #         #     )
-    #         #     session.add(new_quiz)
-            
-    #         session.commit()
-    #         session.close()
-            
-    #         logger.info(f"Quiz state set in database for {user_id}_{course_id}")
-    #         return True
-            
-    #     except Exception as e:
-    #         logger.error(f"Error setting quiz state: {e}")
-    #         if 'session' in locals():
-    #             session.rollback()
-    #             session.close()
-    #         return False
-    
-    # def clear_quiz_state(self, user_id: str, course_id: str) -> bool:
-    #     """Clear quiz state from database"""
-    #     try:
-    #         if not self.engine:
-    #             return False
-            
-    #         session = self.get_session()
-            
-    #         # Delete quiz state
-    #         # session.query(QuizState).filter(
-    #         #     QuizState.user_id == user_id,
-    #         #     QuizState.course_id == course_id
-    #         # ).delete()
-            
-    #         session.commit()
-    #         session.close()
-            
-    #         logger.info(f"Quiz state cleared from database for {user_id}_{course_id}")
-    #         return True
-            
-    #     except Exception as e:
-    #         logger.error(f"Error clearing quiz state: {e}")
-    #         if 'session' in locals():
-    #             session.rollback()
-    #             session.close()
-    #         return False
 
     def get_conversation_summary(self, user_id: str, course_id: str, module_item_id: Optional[str] = None) -> Dict[str, Any]:
         """Get summary of conversation history from database"""
@@ -485,19 +410,6 @@ class EnhancedMemory:
     def get_conversation_history(self) -> List[Dict]:
         """Get conversation history"""
         return self.conversations
-    
-    # def get_quiz_state(self) -> Optional[Dict]:
-    #     """Get current quiz state"""
-    #     if self.quiz_state:
-    #         try:
-    #             return json.loads(self.quiz_state.quiz_data)
-    #         except:
-    #             return None
-    #     return None
-    
-    # def has_quiz_state(self) -> bool:
-    #     """Check if quiz state exists"""
-    #     return self.quiz_state is not None
 
 
 # Global instance

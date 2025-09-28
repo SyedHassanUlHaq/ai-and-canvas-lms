@@ -34,3 +34,5 @@ asyncpg
 
 openai-whisper 
 yt-dlp
+
+boto3

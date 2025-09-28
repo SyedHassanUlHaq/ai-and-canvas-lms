@@ -4,8 +4,8 @@ Handles LTI launch, deep linking, and tool configuration
 """
 
 import logging
-from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, HTTPException, Form, Response
+from typing import Dict, Any
+from fastapi import APIRouter, Request, HTTPException, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 import os
@@ -324,6 +324,7 @@ def get_ai_tutor_embed_html(lti_context: Dict[str, Any]) -> str:
     
     # Extract context information
     course_id = lti_context.get('course_id', 'unknown')
+    print(f"\n\n\n\n\n\n\ncourse_id: {course_id}")
     course_title = lti_context.get('course_title', 'Unknown Course')
     user_id = lti_context.get('user_id', 'unknown')
     

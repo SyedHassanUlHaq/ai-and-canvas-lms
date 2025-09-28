@@ -5,9 +5,24 @@ import logging
 from typing import List, Dict, Any
 from dataclasses import dataclass
 from app.api.setup_db import get_top_5_content
-import google.auth
-from google.cloud import aiplatform
-from vertexai.generative_models import GenerativeModel
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Conditional imports based on USE_BEDROCK setting
+USE_BEDROCK = os.getenv('USE_BEDROCK', 'false').lower() == 'true'
+
+if USE_BEDROCK:
+    from .bedrock_service import bedrock_service
+    logger = logging.getLogger(__name__)
+    logger.info("🤖 Using AWS Bedrock Claude for AI tutoring")
+else:
+    import google.auth
+    from google.cloud import aiplatform
+    from vertexai.generative_models import GenerativeModel
+    logger = logging.getLogger(__name__)
+    logger.info("🤖 Using Google Vertex AI Gemini for AI tutoring")
 
 import hashlib
 # from app.repository.vector import CourseChunkRepository 
@@ -23,7 +38,7 @@ logger = logging.getLogger(__name__)
 class GeminiEmbeddingModel:
     """Improved hash-based embedding model for semantic-like behavior"""
     
-    def __init__(self, project_id: str, location: str = "us-central1"):
+    def __init__(self, project_id: str, location: str = "asia-southeast1"):
         self.project_id = project_id
         self.location = location
         self.use_real_embeddings = False
@@ -201,134 +216,31 @@ class GeminiEmbeddingModel:
         return features[:16]
 
 
-
-"""
-AI Tutor Configuration
-=====================
-
-Configuration settings for the AI Tutor RAG pipeline
-"""
-
-import os
-from typing import Dict, Any
-
-class TutorConfig:
-    """Configuration class for AI Tutor"""
-    
-    # Google Cloud Configuration
-    PROJECT_ID = "elivision-ai-1"
-    LOCATION = "us-central1"
-    CREDENTIALS_PATH = "elivision-ai-1-4e63af45bd31.json"
-    
-    # Model Configuration
-    MODEL_NAME = "gemini-1.5-pro"
-    MAX_TOKENS = 2048
-    TEMPERATURE = 0.7
-    
-    # Vector Store Configuration
-    TOP_K_RESULTS = 3
-    SIMILARITY_THRESHOLD = 0.7
-    
-    # Course Configuration
-    COURSE_NAME = "[DEMO] Introduction to Design Thinking Demo"
-    COURSE_ID = "240"
-    
-    # Tutor Personality
-    TUTOR_PERSONALITY = {
-        "tone": "encouraging and supportive",
-        "style": "clear and engaging",
-        "approach": "student-centered",
-        "expertise": "design thinking, psychology, leadership"
-    }
-    
-    # Learning Objectives
-    LEARNING_OBJECTIVES = [
-        "Understand and articulate core design thinking principles",
-        "Apply psychological concepts to real-world situations", 
-        "Develop leadership skills through GRIT and growth mindset",
-        "Build emotional intelligence and empathy",
-        "Master scientific methods and critical thinking"
-    ]
-    
-    # Response Templates
-    RESPONSE_TEMPLATES = {
-        "greeting": "Hello! I'm your AI tutor for {course_name}. How can I help you learn today?",
-        "encouragement": "Great question! Let me help you understand this concept better.",
-        "clarification": "I want to make sure I understand your question correctly. Could you clarify...",
-        "suggestion": "Here's a helpful approach to think about this...",
-        "next_steps": "To deepen your understanding, I suggest..."
-    }
-    
-    @classmethod
-    def get_model_config(cls) -> Dict[str, Any]:
-        """Get model configuration"""
-        return {
-            "model_name": cls.MODEL_NAME,
-            "max_tokens": cls.MAX_TOKENS,
-            "temperature": cls.TEMPERATURE,
-            "top_k": cls.TOP_K_RESULTS,
-            "similarity_threshold": cls.SIMILARITY_THRESHOLD
-        }
-    
-    # @classmethod
-    # def get_tutor_prompt_template(cls) -> str:
-    #     """Get the base tutor prompt template"""
-    #     return f"""You are an expert AI tutor for the course: {cls.COURSE_NAME}
-
-    #         Your role is to help students learn effectively by providing clear, engaging, and personalized explanations.
-
-    #         COURSE OVERVIEW:
-    #         This course covers multiple interconnected topics:
-    #         - Design Thinking: User-centered innovation and problem-solving
-    #         - Psychology: Scientific study of mind and behavior  
-    #         - Leadership Development: GRIT, growth mindset, and emotional intelligence
-    #         - Brain Science: Understanding neural processes and behavior
-
-    #         TUTOR PERSONALITY:
-    #         - Be {cls.TUTOR_PERSONALITY['tone']} and {cls.TUTOR_PERSONALITY['style']}
-    #         - Use a {cls.TUTOR_PERSONALITY['approach']} approach
-    #         - Draw from your expertise in {cls.TUTOR_PERSONALITY['expertise']}
-
-    #         LEARNING OBJECTIVES:
-    #         {chr(10).join(f"- {obj}" for obj in cls.LEARNING_OBJECTIVES)}
-
-    #         When responding to students:
-    #         1. Use the provided course material as your primary knowledge source
-    #         2. Provide clear, step-by-step explanations
-    #         3. Connect concepts to real-world applications
-    #         4. Encourage critical thinking and reflection
-    #         5. Suggest related topics and next steps
-    #         6. Be patient and supportive of different learning styles
-
-    #         Remember: Your goal is to help students not just memorize information, but truly understand and apply these concepts in their personal and professional lives.""" 
-
-
-# @dataclass
-# class TutorResponse:
-#     """Represents a response from the AI tutor"""
-#     answer: str
-#     confidence: float
-#     sources: List[Dict[str, Any]]
-#     suggested_actions: List[str]
-#     learning_objectives: List[str]
-
 class AITutor:
-    """AI Tutor using RAG pipeline with Gemini"""
+    """AI Tutor using RAG pipeline with either Bedrock Claude or Gemini based on USE_BEDROCK setting"""
     
     def __init__(self, credentials_path: str = "elivision-ai-1-4e63af45bd31.json", project_id: str = 'elivision-ai-1'):
         self.project_id = project_id
         self.credentials_path = credentials_path
+        self.use_bedrock = USE_BEDROCK
         
-        # Initialize Google Cloud credentials FIRST
-        self._setup_credentials()
-        
-        # Then initialize models
-        self._initialize_gemini()
-        # self._initialize_embedding_model()
-        
+        # Initialize AI service based on USE_BEDROCK setting
+        if self.use_bedrock:
+            self._initialize_bedrock()
+        else:
+            self._initialize_gemini()
         
         self.conversation_history = []
         self.student_profile = {}
+    
+    def _initialize_bedrock(self):
+        """Initialize AWS Bedrock service"""
+        try:
+            self.bedrock = bedrock_service
+            logger.info("✅ AWS Bedrock service initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Bedrock: {e}")
+            raise
         
     def _setup_credentials(self):
         """Setup Google Cloud credentials"""
@@ -343,8 +255,12 @@ class AITutor:
     def _initialize_gemini(self):
         """Initialize Gemini model"""
         try:
-            aiplatform.init(project=self.project_id, location="us-central1")
-            self.gemini_model = GenerativeModel("gemini-2.5-pro")
+            # Setup Google Cloud credentials first
+            self._setup_credentials()
+            
+            # Initialize Gemini
+            aiplatform.init(project=self.project_id, location="asia-southeast1")
+            self.gemini_model = GenerativeModel("gemini-2.5-flash")
             logger.info("✅ Gemini model initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini: {e}")
@@ -660,10 +576,15 @@ class AITutor:
                 prompt = self._create_quiz_prompt(query=question, relevant_chunks=str(contents), summary=summary, history=history, language=language, difficulty=difficulty, questions=questions)
             else:
                 prompt = self._create_tutor_prompt(query=question, summary=summary, similar_convo=similar_past_convo, relevant_chunks=contents, history=history, language=language, difficulty=difficulty)
-            # Generate response using Gemini
+            # Generate response using the appropriate AI service
             logger.info("🤖 Generating AI tutor response...")
-            response = self.gemini_model.generate_content(prompt)
-            answer = response.text
+            logger.info(f"🤖 Using {'Bedrock' if self.use_bedrock else 'Gemini'} for AI tutoring")
+            
+            if self.use_bedrock:
+                answer = self.bedrock.generate_content(prompt)
+            else:
+                response = self.gemini_model.generate_content(prompt)
+                answer = response.text
 
             # Log response summary
             logger.info(f"🎯 Response generated successfully!")
@@ -677,4 +598,4 @@ class AITutor:
             return "I apologize, but I Can't process your request right now. Please try again later",
                 
             
-    
+tutor = AITutor()

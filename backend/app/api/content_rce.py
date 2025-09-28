@@ -27,6 +27,7 @@ class ModuleItemContent(BaseModel):
     item_position: int
     page_content: Optional[str] = None
     page_title: Optional[str] = None
+    yt_transcript: Optional[str] = None
 
 class ContentResponse(BaseModel):
     status: str
@@ -76,6 +77,8 @@ async def get_module_item_content(module_item_id: int):
                 page_title=row['page_title'],
                 yt_transcript=row['yt_transcript']
             )
+            
+            logger.info("jkfsdhkjfsdjkfnsdjkfnjksdnfjksdnjkf \n\n\n\n\n\n", content)
             return ContentResponse(status="success", content=content)
         else:
             return ContentResponse(status="error", message="Module item not found")

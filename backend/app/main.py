@@ -15,15 +15,20 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from datetime import datetime
 from app.core.config import settings
-from app.services.ai_service_rce import ai_service
 from app.services.database_service_rce import database_service
 from app.canvas.canvas_service_rce import canvas_service
 from app.services.widget_ai_service_rce import widget_ai_service
 from app.services.summarize_conversation import summary_creator
 from app.repository.conversation_rce import ConversationMemoryRawRepository_rce
-from app.api.lti import model
 from app.core.dependancies import get_db
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
+from app.services.helpers import detect_language, fetch_each_module
+from app.services.quiz_services import get_difficulty_by_quiz_session_id
+from app.repository.quiz_questions import QuizQuestionsRepository
+from app.repository.quiz_session import QuizSessionRepository
+from app.core.config import embedding_model
+import httpx
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, settings.log_level))
@@ -139,11 +144,6 @@ def health():
             "error": str(e)
         }
 
-from app.services.helpers import detect_language
-from app.services.quiz_services import get_difficulty_by_quiz_session_id
-from app.repository.quiz_questions import QuizQuestionsRepository
-from app.repository.quiz_session import QuizSessionRepository
-
 # Core chat endpoint
 @app.post("/api/v1/chat")
 async def chat(request: ChatRequest, http_request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)) -> str:
@@ -175,11 +175,15 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
     # Detect user's language preference from message content
     current_language = detect_language(request.message)
 
+    logger.info(f"request: {request}")
     context = {
         "page_title": request.page_title,
         "page_content": request.page_content,
         "video_transcription": request.yt_transcription,
     }
+    
+    print(context)
+    
     # detected_language = ai_service.detect_user_language(request.message)
     
     try:
@@ -193,6 +197,7 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
             logger.info(f"📋 Module: {request.module_context.get('module_name', 'Unknown')}")
             logger.info(f"📄 Item: {request.module_context.get('item_title', 'Unknown')}")
             logger.info(f"📊 Content length: {len(request.page_content)} characters")
+            
             
             # Create context document from database content
             context_docs = [{
@@ -211,7 +216,11 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                 }
             }]
             
+            
+            logger.info(f"context docs: {context_docs}")
             logger.info(f"✅ Created context from database content")
+            
+            # logger.info(f"context docs: {context_docs}")
             
         elif request.module_item_id and request.course_id:
             # Priority 2: Fallback to basic context if database content not available
@@ -258,7 +267,9 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
             
             # repo = ConversationMemoryRawRepository_rce(db)
         
-            query_embedding = model.encode(request.message, convert_to_numpy=True, device='cpu').tolist()
+            embeddings = embedding_model.get_embeddings([request.message])
+            query_embedding = embeddings[0].values
+
             embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
             summary=None
@@ -266,7 +277,7 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
 
             similar_convo = 'None'
             exists = await conversation_repo.get_by_session_id(session_id=request.session_id)
-            logger.info(f"Exists: {exists}")
+            # logger.info(f"Exists: {exists}")
             if not exists:
             
                 params = {
@@ -293,7 +304,7 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                 user_record = await conversation_repo.get_by_session_id(session_id=request.session_id)
                 user_record = user_record[0]
 
-            logger.info(f"User Record: {user_record}")
+            # logger.info(f"User Record: {user_record}")
             quiz_active = user_record['quiz_active']
             quiz_session_id = user_record['quiz_session_id']
             latest_quiz_session_id = await conversation_repo.get_latest_quiz_session_id(user_record['session_id'])
@@ -310,7 +321,7 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                 logger.info(f"Generating AI response for quiz state: {request.message[:50]}...")
                 response = widget_ai_service.generate_response(
                     message=request.message,
-                    context_docs=context,
+                    context_docs=context_docs,
                     language=current_language,
                     history=history,
                     summary=summary,
@@ -319,12 +330,16 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                     quiz_active=quiz_active,
                     questions=questions
                 )
+                # print(response)
                 try:
                     cleaned_response = regex.sub(r'```json\s*|\s*```', '', response).strip()
                     response_data = json.loads(cleaned_response)
                 except Exception as e:
-                    logger.error(f"Error parsing AI response: {e}")
-                    raise HTTPException(status_code=500, detail="Error parsing AI response")
+                    try:
+                        response_data = json.loads(response)
+                    except Exception as e:
+                        logger.error(f"Error parsing AI response: {e}")
+                        raise HTTPException(status_code=500, detail="Error parsing AI response")
                 
                 answer = response_data.get('response')
                 quiz_active = response_data.get('quiz_active')
@@ -351,7 +366,7 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
             logger.info(f"🔍 Calling widget_ai_service.generate_response with context: {context}")
             ai_response_dict = widget_ai_service.generate_response(
                 message=request.message,
-                context_docs=context,
+                context_docs=context_docs,
                 language=current_language,
                 # user_context=user_context,
                 summary=summary,
@@ -364,9 +379,15 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
             try:
                 cleaned_response = regex.sub(r'```json\s*|\s*```', '', ai_response_dict).strip()
                 response_data = json.loads(cleaned_response)
+                logger.info(f"1 succeeded")
             except Exception as e:
-                logger.error(f"Error parsing AI response: {e}")
-                raise HTTPException(status_code=500, detail="Error parsing AI response")
+                logger.error(f"Error parsing AI response: {e} | Raw: {ai_response_dict}")
+                try:
+                    response_data = json.loads(ai_response_dict)
+                    logger.info(f"2 succeeded")
+                except Exception as e:
+                    logger.error(f"Error parsing AI response: {e}")
+                    raise HTTPException(status_code=500, detail="Error parsing AI response")
             logger.info(f"Response data: {(response_data)}")
             # Extract the main components
             answer = response_data.get("answer")
@@ -402,7 +423,7 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
             logger.info("🤖 Using regular AI service for knowledge base content")
             ai_response_dict = widget_ai_service.generate_response(
                 message=request.message,
-                context_docs=context,
+                context_docs=context_docs,
                 language=current_language,
                 # user_context={},
                 summary='',
@@ -418,9 +439,11 @@ async def chat(request: ChatRequest, http_request: Request, background_tasks: Ba
                 cleaned_response = regex.sub(r'```json\s*|\s*```', '', ai_response_dict).strip()
                 response_data = json.loads(cleaned_response)
             except Exception as e:
-                logger.error(f"Error parsing AI response: {e}")
-                raise HTTPException(status_code=500, detail="Error parsing AI response")
-
+                try:
+                    response_data = json.loads(ai_response_dict)
+                except Exception as e:
+                    logger.error(f"Error parsing AI response: {e}")
+                    raise HTTPException(status_code=500, detail="Error parsing AI response")
 
             logger.info(f"Response data: {(response_data)}")
 
@@ -487,6 +510,19 @@ def get_ai_status():
     except Exception as e:
         logger.error(f"Error getting AI status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/api/v1/update-db")
+def update_db():
+    try:
+        fetch_each_module()
+        return {
+            "status": "success",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error updating data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
 
 # DASHBOARD ENDPOINTS
 
@@ -508,6 +544,51 @@ async def get_total_students(course_id: int):
         raise HTTPException(status_code=404, detail="total_students not found in response")
 
     return {"course_id": course_id, "total_students": total_students}
+
+@app.get("/api/v1/messages/count")
+async def get_message_counts(db: AsyncSession = Depends(get_db)):
+    """
+    Returns the count of messages from user and AI.
+    """
+    try:
+        # Count messages in 'conversations'
+        query1 = text("""
+            SELECT
+                SUM(CASE WHEN message_from = 'user' THEN 1 ELSE 0 END) AS user_messages,
+                SUM(CASE WHEN message_from = 'ai' THEN 1 ELSE 0 END) AS ai_messages
+            FROM conversations
+        """)
+        result1 = await db.execute(query1)
+        counts_conversations = result1.fetchone()
+        user_count_all = counts_conversations.user_messages or 0
+        ai_count_all = counts_conversations.ai_messages or 0
+
+        # Count messages in 'conversations_rce'
+        query2 = text("""
+            SELECT
+                SUM(CASE WHEN message_from = 'user' THEN 1 ELSE 0 END) AS user_messages,
+                SUM(CASE WHEN message_from = 'ai' THEN 1 ELSE 0 END) AS ai_messages
+            FROM conversations_rce
+        """)
+        result2 = await db.execute(query2)
+        counts_rce = result2.fetchone()
+        user_count_rce = counts_rce.user_messages or 0
+        ai_count_rce = counts_rce.ai_messages or 0
+
+        return {
+            "user_messages": {
+                "all_conversations": user_count_all,
+                "rce_conversations": user_count_rce
+            },
+            "ai_messages": {
+                "all_conversations": ai_count_all,
+                "rce_conversations": ai_count_rce
+            }
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
 # Include content router
 from app.api.content_rce import router as content_router
 app.include_router(content_router)
@@ -516,8 +597,15 @@ app.include_router(content_router)
 from app.api.lti_rce import router as lti_router
 app.include_router(lti_router)
 
+# Include LTI Dashboard router
+from app.api.lti_dashboard import router as lti_dashboard_router
+app.include_router(lti_dashboard_router)
+
 from app.api.setup_db import router as db_router
 app.include_router(db_router)
+
+from app.api.lti import router as lti2_router
+app.include_router(lti2_router)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")

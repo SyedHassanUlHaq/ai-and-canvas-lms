@@ -330,6 +330,11 @@
             }
         }
 
+        async function course_context(){
+            console.log('📍 Current URL:', window.location.href);
+            console.log('�� Current URL search params:', window.location.search);
+        }
+
         function updateContextInfo(message) {
             const contextInfo = document.getElementById('context-info');
             if (contextInfo) {

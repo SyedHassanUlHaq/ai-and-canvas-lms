@@ -1,0 +1,59 @@
+{
+  "title": "AI Dashboard",
+  "description": "AI-powered analytics dashboard for course insights and student performance tracking",
+  "target_link_uri": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/launch",
+  "oidc_initiation_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/oidc",
+  "public_jwk_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/.well-known/jwks.json",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem",
+    "https://purl.imsglobal.org/spec/lti-ags/scope/result",
+    "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+    "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
+  ],
+  "extensions": [
+    {
+      "platform": "canvas.instructure.com",
+      "settings": {
+        "platform": "canvas.instructure.com",
+        "placements": [
+          {
+            "placement": "course_navigation",
+            "enabled": true,
+            "text": "AI Dashboard",
+            "message_type": "LtiResourceLinkRequest",
+            "target_link_uri": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/launch",
+            "icon_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/icon",
+            "canvas_icon_class": "icon-dashboard",
+            "display_type": "full_width",
+            "visibility": "public"
+          },
+          {
+            "placement": "account_navigation",
+            "enabled": true,
+            "text": "AI Dashboard",
+            "message_type": "LtiResourceLinkRequest",
+            "target_link_uri": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/launch",
+            "icon_url": "https://ai-canvas-lms-73183888096.asia-southeast2.run.app/lti_dashboard/icon",
+            "canvas_icon_class": "icon-dashboard",
+            "display_type": "default",
+            "visibility": "public"
+          }
+        ]
+      }
+    }
+  ],
+  "custom_fields": {
+    "canvas_course_id": "$Canvas.course.id",
+    "canvas_user_id": "$Canvas.user.id",
+    "canvas_user_name": "$Canvas.user.name",
+    "canvas_user_email": "$Canvas.user.email",
+    "canvas_course_name": "$Canvas.course.name",
+    "canvas_account_id": "$Canvas.account.id"
+  },
+  "privacy_level": "public",
+  "launch_presentation": {
+    "document_target": "iframe",
+    "width": "100%",
+    "height": "600px"
+  }
+}

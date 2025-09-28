@@ -1,14 +1,12 @@
-import os
 import pathlib
 from pydoc import doc
 from fastapi import HTTPException, status, APIRouter
 from pydantic import BaseModel
 import logging
 from typing import Optional
-
 from app.services.huggingface_embeddings import embed_course_doc
 from app.core.dependancies import get_db
-
+from app.core.config import embedding_model
 
 router = APIRouter(prefix="/setupdb", tags=["LTI 1.3"])
 
@@ -163,22 +161,16 @@ async def get_course_chunks(db: AsyncSession = Depends(get_db)):
         # Handle any database errors
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-from sentence_transformers import SentenceTransformer
-
-# Initialize embedding model
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-
 
 async def get_top_5_content(query: str, db: AsyncSession) -> List[Dict]:
     """
     Get top 5 matching content from course_embeddings using SQLAlchemy async and pgvector.
     """
     # 1️⃣ Encode query to vector
-    query_embedding = model.encode(query, convert_to_numpy=True, device='cpu').tolist()
-    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-    
+    embeddings = embedding_model.get_embeddings([query])
+    query_embedding = embeddings[0].values
 
+    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
     try:
         # 2️⃣ Use SQLAlchemy with pgvector distance operator

@@ -3,29 +3,31 @@ LTI 1.3 API Endpoints
 """
 import logging
 import json
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any, Optional
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, HTTPException, Form, Query, Depends, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from fastapi.responses import RedirectResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from app.services.lti_service import lti_service
-from app.models.lti_models import LTILaunchResponse, LTIDeepLinkingResponse
+# from app.models.lti_models import LTILaunchResponse, LTIDeepLinkingResponse
 from app.services.memory_service import memory_service
-from app.services.canvas_api_service import canvas_api_service
-from app.services.vector import AITutor, TutorConfig
-from app.repository.conversation_memory import ConversationMemoryRepository, ConversationMemoryRawRepository
+# from app.services.canvas_api_service import canvas_api_service
+from app.services.vector import tutor
+from app.repository.conversation_memory import ConversationMemoryRawRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repository.user_sessions import SessionRepository
-from app.api.setup_db import get_top_5_content
+# from app.api.setup_db import get_top_5_content
 from app.core.dependancies import get_db
-from dataclasses import dataclass
-from sentence_transformers import SentenceTransformer
+# from dataclasses import dataclass
+# from sentence_transformers import SentenceTransformer
 from app.services.summarize_conversation import summary_creator
 from app.services.quiz_services import *
 from app.repository.quiz_questions import QuizQuestionsRepository
 from app.repository.quiz_session import QuizSessionRepository
 from app.services.helpers import detect_language
 import re
+from app.core.config import embedding_model
+
 
 
 
@@ -796,10 +798,6 @@ async def platform_storage_get(
 
 
 
-
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-
 @router.post("/course/chatv2")
 async def lti_course_chat(
     request: Request,
@@ -812,21 +810,13 @@ async def lti_course_chat(
     """LTI course chat with Canvas progress context"""
     try:
 
-
-        tutor = AITutor()
-
         current_language = detect_language(message)
         
         session_repo = SessionRepository(db)
         conversation_repo = ConversationMemoryRawRepository(db)
         quiz_questions_repo = QuizQuestionsRepository(db)
         
-
-
-
-        print(1)
         user_id = await session_repo.get_user_id_by_session_id(session_token)
-        print(2)
         user_record = await conversation_repo.get_user_by_id(user_id)
         latest_quiz_session_id = await conversation_repo.get_latest_quiz_session_id(user_record['session_id'])
         logging.info(f"Latest quiz session ID for user {user_id}: {latest_quiz_session_id}")
@@ -840,7 +830,9 @@ async def lti_course_chat(
 
         # Initialize embedding model
         
-        query_embedding = model.encode(message, convert_to_numpy=True, device='cpu').tolist()
+        embeddings = embedding_model.get_embeddings([message])
+        query_embedding = embeddings[0].values
+
         embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
         params = {
@@ -858,9 +850,9 @@ async def lti_course_chat(
             'current_language': current_language            # 'context_used': json.dumps(memory_data.get('context_used')) if memory_data.get('context_used') else None
         }
 
-        rec = await conversation_repo.create(params)
+        await conversation_repo.create(params)
 
-        logger.info('question added in conversation: ', rec)
+        # logger.info('question added in conversation: ', rec)
 
         # Verify session
         logger.info(f"Course chat request for session: {session_token}")
@@ -875,16 +867,16 @@ async def lti_course_chat(
         previous_summary = await conversation_repo.get_latest_summary(user_id)
 
         if is_quiz_active:
-            logger.info(f"Quiz State Active for user: {user_id}")
+            # logger.info(f"Quiz State Active for user: {user_id}")
 
 
-            logger.info(f"Retrieving Questions for session_id: {user_record['quiz_session_id']}")
+            # logger.info(f"Retrieving Questions for session_id: {user_record['quiz_session_id']}")
 
             questions = await quiz_questions_repo.get_questions_by_session_id(user_record['quiz_session_id'])
 
-            logger.info(f"Retrieved Questions: {questions}")
+            # logger.info(f"Retrieved Questions: {questions}")
 
-            logger.info(f"Generating AI response for quiz state: {message[:50]}...")
+            # logger.info(f"Generating AI response for quiz state: {message[:50]}...")
             response = await tutor.ask_question(
                 question=message,
                 history=history,
@@ -901,8 +893,11 @@ async def lti_course_chat(
                 cleaned_response = re.sub(r'```json\s*|\s*```', '', response).strip()
                 response_data = json.loads(cleaned_response)
             except Exception as e:
-                logger.error(f"Error parsing AI response: {e}")
-                raise HTTPException(status_code=500, detail="Error parsing AI response")
+                try:
+                    response_data = json.loads(response)
+                except Exception as e:
+                    logger.error(f"Error parsing AI response: {e}")
+                    raise HTTPException(status_code=500, detail="Error parsing AI response")
 
             
             answer = response_data.get('response')
@@ -945,8 +940,11 @@ async def lti_course_chat(
             cleaned_response = re.sub(r'```json\s*|\s*```', '', response).strip()
             response_data = json.loads(cleaned_response)
         except Exception as e:
-            logger.error(f"Error parsing AI response: {e}")
-            raise HTTPException(status_code=500, detail="Error parsing AI response")
+            try:
+                response_data = json.loads(response)
+            except Exception as e:
+                logger.error(f"Error parsing AI response: {e}")
+                raise HTTPException(status_code=500, detail="Error parsing AI response")
 
         logger.info(f"Response data: {(response_data)}")
         

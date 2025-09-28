@@ -39,7 +39,7 @@ gcloud services enable containerregistry.googleapis.com
 gcloud services enable aiplatform.googleapis.com
 
 # Set the region
-REGION="us-central1"
+REGION="asia-southeast1"
 gcloud config set run/region $REGION
 
 echo "🌍 Region: $REGION"

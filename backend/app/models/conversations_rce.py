@@ -31,7 +31,7 @@ class ConversationMemory_rce(Base):
     message = Column(Text, nullable=False)
     message_from = Column(String(10), default='user', nullable=False) 
     session_id = Column(String(100), nullable=False)
-    embedding = Column(Vector(384), nullable=False)  # matches all-MiniLM-L6-v2
+    embedding = Column(Vector(3072), nullable=False)  # matches all-MiniLM-L6-v2
     summary = Column(Text, nullable=True)
     # response = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.now, nullable=False)

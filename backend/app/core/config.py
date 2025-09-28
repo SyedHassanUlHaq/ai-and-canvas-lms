@@ -6,6 +6,9 @@ import os
 from dotenv import load_dotenv
 import pathlib
 
+import vertexai
+from vertexai.language_models import TextEmbeddingModel
+
 # Path to .env
 load_dotenv()
 
@@ -31,8 +34,7 @@ class Settings(BaseModel):
     environment: str = "development"
     
     # AI Configuration (required by services)
-    google_api_key: str = Field(default="", description="Google Cloud API Key")
-    gemini_model: str = Field(default="gemini-2.5-pro", description="Gemini model to use")
+    gemini_model: str = Field(default="gemini-2.5-flash", description="Gemini model to use")
     
     # Memory Configuration (required by memory service)
     memory_file_path: str = Field(default="data/conversation_memory", description="Path to store conversation memory")
@@ -72,3 +74,9 @@ print(f"Google credentials: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
 
 if os.getenv("LOG_LEVEL"):
     settings.log_level = os.getenv("LOG_LEVEL")
+    
+# Init Vertex AI in the same region as your Cloud Run
+vertexai.init(project="elivision-ai-1", location="asia-southeast1")
+
+# # Load embedding model once (cached in memory)
+embedding_model = TextEmbeddingModel.from_pretrained("gemini-embedding-001")

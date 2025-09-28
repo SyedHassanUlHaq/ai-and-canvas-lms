@@ -3,16 +3,31 @@ import json
 import logging
 from typing import List, Dict, Any
 from dataclasses import dataclass
-from app.api.setup_db import get_top_5_content
-import google.auth
-from google.cloud import aiplatform
-from vertexai.generative_models import GenerativeModel
+from dotenv import load_dotenv
 from app.repository.conversation_memory import ConversationMemoryRawRepository
 from app.repository.user_sessions import SessionRepository
-from app.api.setup_db import model
-import hashlib
+from app.core.config import embedding_model
+
+# Load environment variables
+load_dotenv()
+
+# Conditional imports based on USE_BEDROCK setting
+USE_BEDROCK = os.getenv('USE_BEDROCK', 'false').lower() == 'true'
+
+if USE_BEDROCK:
+    from .bedrock_service import bedrock_service
+    logger = logging.getLogger(__name__)
+    logger.info("🤖 Using AWS Bedrock Claude for conversation summarization")
+else:
+    import google.auth
+    from google.cloud import aiplatform
+    from vertexai.generative_models import GenerativeModel
+    logger = logging.getLogger(__name__)
+    logger.info("🤖 Using Google Vertex AI Gemini for conversation summarization")
+
+
+
 # from app.repository.vector import CourseChunkRepository 
-from app.core.config import Settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,22 +44,30 @@ class AIResponse:
     learning_objectives: List[str]
 
 class ConvoSummerizer:
-    """AI Tutor using RAG pipeline with Gemini"""
+    """AI Tutor using RAG pipeline with either Bedrock Claude or Gemini based on USE_BEDROCK setting"""
     
     def __init__(self, credentials_path: str = "elivision-ai-1-4e63af45bd31.json", project_id: str = 'elivision-ai-1'):
         self.project_id = project_id
         self.credentials_path = credentials_path
+        self.use_bedrock = USE_BEDROCK
         
-        # Initialize Google Cloud credentials FIRST
-        self._setup_credentials()
-        
-        # Then initialize models
-        self._initialize_gemini()
-        # self._initialize_embedding_model()
+        # Initialize AI service based on USE_BEDROCK setting
+        if self.use_bedrock:
+            self._initialize_bedrock()
+        else:
+            self._initialize_gemini()
         
         # Initialize vector store (pgvector by default)
         # self._initialize_vector_store()
         
+    def _initialize_bedrock(self):
+        """Initialize AWS Bedrock service"""
+        try:
+            self.bedrock = bedrock_service
+            logger.info("✅ AWS Bedrock service initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Bedrock: {e}")
+            raise
         
     def _setup_credentials(self):
         """Setup Google Cloud credentials"""
@@ -59,8 +82,12 @@ class ConvoSummerizer:
     def _initialize_gemini(self):
         """Initialize Gemini model"""
         try:
-            aiplatform.init(project=self.project_id, location="us-central1")
-            self.gemini_model = GenerativeModel("gemini-2.5-pro")
+            # Setup Google Cloud credentials first
+            self._setup_credentials()
+            
+            # Initialize Gemini
+            aiplatform.init(project=self.project_id, location="asia-southeast1")
+            self.gemini_model = GenerativeModel("gemini-2.5-flash")
             logger.info("✅ Gemini model initialized successfully")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Gemini: {e}")
@@ -106,8 +133,14 @@ class ConvoSummerizer:
             prompt = self._create_tutor_prompt(query, response, summary)
             
             logger.info("🤖 Generating Summary")
-            summary_response = self.gemini_model.generate_content(prompt)
-            summary = summary_response.text
+            logger.info(f"🤖 Using {'Bedrock' if self.use_bedrock else 'Gemini'} for summarization")
+            
+            # Generate summary using the appropriate AI service
+            if self.use_bedrock:
+                summary = self.bedrock.generate_content(prompt)
+            else:
+                summary_response = self.gemini_model.generate_content(prompt)
+                summary = summary_response.text
 
 
 
@@ -115,7 +148,9 @@ class ConvoSummerizer:
             # Log response summary
             logger.info(f"  summary generated successfully: {summary}")
 
-            query_embedding = model.encode(response, convert_to_numpy=True, device='cpu').tolist()
+            embeddings = embedding_model.get_embeddings([response])
+            query_embedding = embeddings[0].values
+
             embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
 
@@ -167,19 +202,22 @@ class ConvoSummerizer:
             prompt = self._create_tutor_prompt(query, response, summary)
             
             logger.info("🤖 Generating Summary")
-            summary_response = self.gemini_model.generate_content(prompt)
-            summary = summary_response.text
-
-
-
+            logger.info(f"🤖 Using {'Bedrock' if self.use_bedrock else 'Gemini'} for summarization")
             
+            # Generate summary using the appropriate AI service
+            if self.use_bedrock:
+                summary = self.bedrock.generate_content(prompt)
+            else:
+                summary_response = self.gemini_model.generate_content(prompt)
+                summary = summary_response.text
+
             # Log response summary
             logger.info(f"  summary generated successfully: {summary}")
 
-            query_embedding = model.encode(response, convert_to_numpy=True, device='cpu').tolist()
+            embeddings = embedding_model.get_embeddings([response])
+            query_embedding = embeddings[0].values
+
             embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
-
 
             params = {
                 'user_id': None,
@@ -196,9 +234,7 @@ class ConvoSummerizer:
 
             logger.info('response added in conversation: ', rec)
 
-            return summary
-            # logger.info(f"   Top similarity: {max([chunk['similarity'] for chunk in relevant_chunks]) if relevant_chunks else 0:.4f}")
-            
+            return summary            
             
         except Exception as e:
             logger.error(f"❌ Error generating response: {e}")
